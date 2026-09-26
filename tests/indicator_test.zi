@@ -1,0 +1,36 @@
+#import "candle_chart"
+#import "geometry"
+
+#program_export
+main :: () -> s32 {
+    bars: [5]PriceBar
+    closes: [5]float32 = .{1.0, 2.0, 3.0, 10.0, 5.0}
+    index: s32 = 0
+    while index < 5 {
+        bars[index].timestamp = 1000 + cast(s64)index * 86400
+        bars[index].close = closes[index]
+        bars[index].high = closes[index]
+        bars[index].low = closes[index]
+        bars[index].volume = cast(float32)(index + 1)
+        index += 1
+    }
+    values: []PriceBar = bars[:]
+    if SMAAt(values, 1, 3) != 0.0 { return 1 }
+    if SMAAt(values, 2, 3) != 2.0 { return 2 }
+    if SMAAt(values, 4, 3) != 6.0 { return 3 }
+    if EMAAt(values, 2, 3) != 2.0 { return 4 }
+    if EMAAt(values, 3, 3) != 6.0 { return 5 }
+    if EMAAt(values, 4, 3) != 5.5 { return 6 }
+    if CandleVisibleStart(5, 3) != 2 { return 7 }
+    range: CandleRange = CandleRangeFor(values, 3)
+    if range.low != 3.0 || range.high != 10.0 ||
+        range.max_volume != 5.0 { return 8 }
+    bounds: Rectangle = Rectangle.{0.0, 0.0, 300.0, 100.0}
+    visible: float32 = CandleMarkerX(values, 3, bounds,
+        bars[3].timestamp)
+    missing: float32 = CandleMarkerX(values, 3, bounds,
+        bars[0].timestamp)
+    if visible != 150.0 { return 9 }
+    if missing != -1.0 { return 10 }
+    return 0
+}

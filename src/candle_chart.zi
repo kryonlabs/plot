@@ -1,0 +1,290 @@
+#import "drawing_props"
+#import "button_props"
+#import "button_widget"
+#import "geometry"
+#import "paint_queue"
+#import "plot_props"
+#import "plot_widget"
+#import "session"
+
+using PlotMode;
+
+PriceBar :: struct {
+    timestamp: s64
+    open: float32
+    high: float32
+    low: float32
+    close: float32
+    volume: float32
+}
+
+CandleRange :: struct {
+    low: float32
+    high: float32
+    min_value: float32
+    max_value: float32
+    max_volume: float32
+}
+
+CandleChartProps :: struct {
+    key: u64
+    bounds: Rectangle
+    visible_count: s32
+    semantic_label: string
+    up_color: Color
+    down_color: Color
+    grid_color: Color
+    sma20_color: Color
+    sma50_color: Color
+    ema20_color: Color
+    show_sma20: bool
+    show_sma50: bool
+    show_ema20: bool
+}
+
+// Generic time markers. The chart caller owns the meaning of each marker.
+ChartMarker :: struct {
+    timestamp: s64
+    label: string
+    color: Color
+}
+
+#program_export
+CandleVisibleStart :: (count: s32, visible_count: s32) -> s32 {
+    if visible_count <= 0 || count <= visible_count { return 0 }
+    return count - visible_count
+}
+
+#program_export
+CandleRangeFor :: (bars: []PriceBar, visible_count: s32) -> CandleRange {
+    result: CandleRange
+    if bars.count == 0 { return result }
+    start: s32 = CandleVisibleStart(cast(s32)bars.count, visible_count)
+    result.low = bars[start].low
+    result.high = bars[start].high
+    index: s32 = start
+    while index < cast(s32)bars.count {
+        if bars[index].low < result.low { result.low = bars[index].low }
+        if bars[index].high > result.high { result.high = bars[index].high }
+        if bars[index].volume > result.max_volume {
+            result.max_volume = bars[index].volume
+        }
+        index += 1
+    }
+    spread: float32 = result.high - result.low
+    if spread < 1.0 { spread = 1.0 }
+    padding: float32 = spread * 0.05
+    result.min_value = result.low - padding
+    result.max_value = result.high + padding
+    return result
+}
+
+#program_export
+CandlePriceBounds :: (bounds: Rectangle) -> Rectangle {
+    result: Rectangle = bounds
+    result.height = bounds.height * 0.74
+    return result
+}
+
+#program_export
+CandleVolumeBounds :: (bounds: Rectangle) -> Rectangle {
+    return Rectangle.{bounds.x, bounds.y + bounds.height * 0.79,
+        bounds.width, bounds.height * 0.18}
+}
+
+CandleY :: (value: float32, bounds: Rectangle, range: CandleRange) -> float32 {
+    span: float32 = range.max_value - range.min_value
+    if span <= 0.0 { return bounds.y + bounds.height / 2.0 }
+    fraction: float32 = (range.max_value - value) / span
+    if fraction < 0.0 { fraction = 0.0 }
+    if fraction > 1.0 { fraction = 1.0 }
+    return bounds.y + fraction * bounds.height
+}
+
+#program_export
+SMAAt :: (bars: []PriceBar, index: s32, period: s32) -> float32 {
+    if period <= 0 || index < period - 1 ||
+        index >= cast(s32)bars.count { return 0.0 }
+    total: float32 = 0.0
+    cursor: s32 = index - period + 1
+    while cursor <= index {
+        total += bars[cursor].close
+        cursor += 1
+    }
+    return total / cast(float32)period
+}
+
+#program_export
+EMAAt :: (bars: []PriceBar, index: s32, period: s32) -> float32 {
+    if period <= 0 || index < period - 1 ||
+        index >= cast(s32)bars.count { return 0.0 }
+    value: float32 = SMAAt(bars, period - 1, period)
+    alpha: float32 = 2.0 / cast(float32)(period + 1)
+    cursor: s32 = period
+    while cursor <= index {
+        value = alpha * bars[cursor].close + (1.0 - alpha) * value
+        cursor += 1
+    }
+    return value
+}
+
+DrawAverage :: (session: Session, props: CandleChartProps,
+    bars: []PriceBar, range: CandleRange, period: s32,
+    exponential: bool, color: Color) {
+    price: Rectangle = CandlePriceBounds(props.bounds)
+    start: s32 = CandleVisibleStart(cast(s32)bars.count,
+        props.visible_count)
+    count: s32 = cast(s32)bars.count - start
+    if count <= 0 { return }
+    step: float32 = price.width / cast(float32)count
+    previous: bool = false
+    previous_x: float32 = 0.0
+    previous_y: float32 = 0.0
+    index: s32 = start
+    while index < cast(s32)bars.count {
+        value: float32 = SMAAt(bars, index, period)
+        if exponential { value = EMAAt(bars, index, period) }
+        if value > 0.0 {
+            x: float32 = price.x +
+                (cast(float32)(index - start) + 0.5) * step
+            y: float32 = CandleY(value, price, range)
+            if previous {
+                PaintLine(session, -1,
+                    Rectangle.{previous_x, previous_y,
+                        x - previous_x, y - previous_y}, color)
+            }
+            previous_x = x
+            previous_y = y
+            previous = true
+        }
+        index += 1
+    }
+}
+
+#program_export
+CandleChart :: (session: Session, props: CandleChartProps,
+    bars: []PriceBar, range: CandleRange) {
+    background: PlotProps
+    background.key = props.key
+    background.mode = cast(PlotMode)PlotLines
+    background.bounds = props.bounds
+    background.semantic_label = props.semantic_label
+    empty: [1]float32
+    Plot(session, background, empty[0:0])
+    if bars.count == 0 { return }
+
+    price: Rectangle = CandlePriceBounds(props.bounds)
+    volume: Rectangle = CandleVolumeBounds(props.bounds)
+    grid_index: s32 = 0
+    while grid_index < 5 {
+        fraction: float32 = cast(float32)grid_index / 4.0
+        y: float32 = price.y + price.height * fraction
+        PaintLine(session, -1,
+            Rectangle.{price.x, y, price.width, 0.0}, props.grid_color)
+        grid_index += 1
+    }
+    PaintLine(session, -1,
+        Rectangle.{volume.x, volume.y - 5.0, volume.width, 0.0},
+        props.grid_color)
+
+    start: s32 = CandleVisibleStart(cast(s32)bars.count,
+        props.visible_count)
+    count: s32 = cast(s32)bars.count - start
+    step: float32 = price.width / cast(float32)count
+    body_width: float32 = step * 0.63
+    if body_width < 2.0 { body_width = 2.0 }
+    if body_width > 12.0 { body_width = 12.0 }
+    index: s32 = start
+    while index < cast(s32)bars.count {
+        bar: PriceBar = bars[index]
+        x: float32 = price.x +
+            (cast(float32)(index - start) + 0.5) * step
+        color: Color = props.up_color
+        if bar.close < bar.open { color = props.down_color }
+        wick_high: float32 = CandleY(bar.high, price, range)
+        wick_low: float32 = CandleY(bar.low, price, range)
+        PaintLine(session, -1,
+            Rectangle.{x, wick_high, 0.0, wick_low - wick_high}, color)
+        open_y: float32 = CandleY(bar.open, price, range)
+        close_y: float32 = CandleY(bar.close, price, range)
+        top: float32 = open_y
+        bottom: float32 = close_y
+        if bottom < top {
+            top = close_y
+            bottom = open_y
+        }
+        body_height: float32 = bottom - top
+        if body_height < 2.0 {
+            top -= 1.0
+            body_height = 2.0
+        }
+        PaintRoundedFill(session, -1,
+            Rectangle.{x - body_width / 2.0, top,
+                body_width, body_height}, 0.0, 0, color)
+        if range.max_volume > 0.0 {
+            volume_height: float32 = volume.height *
+                bar.volume / range.max_volume
+            PaintRoundedFill(session, -1,
+                Rectangle.{x - body_width / 2.0,
+                    volume.y + volume.height - volume_height,
+                    body_width, volume_height}, 0.0, 0, color)
+        }
+        index += 1
+    }
+    if props.show_sma20 {
+        DrawAverage(session, props, bars, range, 20, false,
+            props.sma20_color)
+    }
+    if props.show_sma50 {
+        DrawAverage(session, props, bars, range, 50, false,
+            props.sma50_color)
+    }
+    if props.show_ema20 {
+        DrawAverage(session, props, bars, range, 20, true,
+            props.ema20_color)
+    }
+}
+
+#program_export
+CandleMarkerX :: (bars: []PriceBar, visible_count: s32,
+    bounds: Rectangle, timestamp: s64) -> float32 {
+    if bars.count == 0 { return -1.0 }
+    start: s32 = CandleVisibleStart(cast(s32)bars.count, visible_count)
+    count: s32 = cast(s32)bars.count - start
+    index: s32 = start
+    while index < cast(s32)bars.count {
+        if bars[index].timestamp == timestamp {
+            return bounds.x +
+                (cast(float32)(index - start) + 0.5) *
+                bounds.width / cast(float32)count
+        }
+        index += 1
+    }
+    return -1.0
+}
+
+// Returns the activated marker index, or -1. Markers are rendered after the
+// candles so their hit targets stay independent of the price and news model.
+#program_export
+CandleMarkers :: (session: Session, props: CandleChartProps,
+    bars: []PriceBar, markers: []ChartMarker) -> s32 {
+    selected: s32 = -1
+    price: Rectangle = CandlePriceBounds(props.bounds)
+    index: s32 = 0
+    while index < cast(s32)markers.count {
+        x: float32 = CandleMarkerX(bars, props.visible_count,
+            price, markers[index].timestamp)
+        if x >= 0.0 {
+            PaintLine(session, -1,
+                Rectangle.{x, price.y + 22.0, 0.0, price.height - 22.0},
+                markers[index].color)
+            marker: ButtonProps
+            marker.key = props.key + cast(u64)1000 + cast(u64)index
+            marker.bounds = Rectangle.{x - 11.0, price.y + 2.0, 22.0, 20.0}
+            marker.label = markers[index].label
+            if Button(session, marker) != 0 { selected = index }
+        }
+        index += 1
+    }
+    return selected
+}

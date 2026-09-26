@@ -1,0 +1,54 @@
+#import "candle_chart"
+#import "drawing_props"
+#import "geometry"
+#import "paint_queue"
+#import "session"
+#import "text_props"
+#import "text_widget"
+
+#program_export
+Frame :: (session: Session, viewport: Rectangle) -> s32 {
+    closes: [32]float32 = .{
+        42.0, 44.0, 43.0, 47.0, 45.0, 49.0, 48.0, 51.0,
+        46.0, 48.0, 53.0, 52.0, 55.0, 54.0, 58.0, 57.0,
+        56.0, 59.0, 61.0, 58.0, 60.0, 63.0, 62.0, 66.0,
+        64.0, 67.0, 65.0, 68.0, 71.0, 69.0, 73.0, 72.0
+    }
+    bars: [32]PriceBar
+    index: s32 = 0
+    while index < 32 {
+        previous: float32 = closes[0]
+        if index > 0 { previous = closes[index - 1] }
+        bars[index].open = previous
+        bars[index].close = closes[index]
+        bars[index].high = previous
+        bars[index].low = previous
+        if closes[index] > previous { bars[index].high = closes[index] }
+        if closes[index] < previous { bars[index].low = closes[index] }
+        bars[index].high += 1.0
+        bars[index].low -= 1.0
+        bars[index].volume = cast(float32)(80 + index * 7)
+        index += 1
+    }
+    title: TextProps
+    title.key = cast(u64)1
+    title.text = "Plot"
+    title.font = 28
+    title.bounds = Rectangle.{32.0, 24.0, viewport.width - 64.0, 48.0}
+    Text(session, title)
+
+    chart: CandleChartProps
+    chart.key = cast(u64)2
+    chart.bounds = Rectangle.{48.0, 104.0,
+        viewport.width - 96.0, viewport.height - 168.0}
+    chart.visible_count = 32
+    chart.semantic_label = "Example candlestick chart with volume and SMA 20"
+    chart.up_color = ColorFromPacked(cast(u32)0x168265ff)
+    chart.down_color = ColorFromPacked(cast(u32)0xb34d53ff)
+    chart.grid_color = ColorFromPacked(cast(u32)0xe3eaf0ff)
+    chart.sma20_color = ColorFromPacked(cast(u32)0xd18a1bff)
+    chart.show_sma20 = true
+    values: []PriceBar = bars[:]
+    CandleChart(session, chart, values, CandleRangeFor(values, 32))
+    return 0
+}

@@ -1,0 +1,5 @@
+[project]
+default_profile = "cairo"
+
+[profiles.cairo]
+backend = "desktop"
