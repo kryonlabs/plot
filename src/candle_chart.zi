@@ -55,6 +55,25 @@ CandleVisibleStart :: (count: s32, visible_count: s32) -> s32 {
     return count - visible_count
 }
 
+// A rightward drag reveals older candles; a leftward drag moves toward now.
+// The caller applies the returned candle count to its own time window.
+#program_export
+CandlePanStepsFor :: (start_x: float32, current_x: float32,
+    bounds: Rectangle, visible_count: s32) -> s32 {
+    if bounds.width <= 0.0 || visible_count <= 0 { return 0 }
+    step: float32 = bounds.width / cast(float32)visible_count
+    return cast(s32)((start_x - current_x) / step)
+}
+
+#program_export
+CandleIndexAtX :: (x: float32, bounds: Rectangle,
+    visible_count: s32) -> s32 {
+    if visible_count <= 0 || bounds.width <= 0.0 ||
+        x < bounds.x || x >= bounds.x + bounds.width { return -1 }
+    return cast(s32)((x - bounds.x) *
+        cast(float32)visible_count / bounds.width)
+}
+
 #program_export
 CandleRangeFor :: (bars: []PriceBar, visible_count: s32) -> CandleRange {
     result: CandleRange
