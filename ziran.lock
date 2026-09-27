@@ -15,7 +15,7 @@
     "name": "plot"
   },
   "toolchain": {
-    "commit": "499696ad4526fa97ef0b3e16aabb801b122e4900",
+    "commit": "9ae10a7c902c3a86b491cbc53f7ab7d4efbd6579",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }
