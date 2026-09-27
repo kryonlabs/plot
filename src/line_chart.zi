@@ -1,9 +1,4 @@
-#import "drawing_props"
-#import "geometry"
-#import "paint_queue"
-#import "plot_props"
-#import "plot_widget"
-#import "session"
+using UI :: #import "Kryon";
 
 using PlotMode;
 
