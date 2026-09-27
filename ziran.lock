@@ -11,13 +11,11 @@
     }
   ],
   "root": {
-    "dependencies": {
-      "kryon": "pfc84fe5aa8556c7c"
-    },
+    "dependencies": {"kryon": "pfc84fe5aa8556c7c"},
     "name": "plot"
   },
   "toolchain": {
-    "commit": "f3374188260b7c2fc497f0abed1d38fcb822547a",
+    "commit": "499696ad4526fa97ef0b3e16aabb801b122e4900",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }
