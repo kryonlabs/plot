@@ -1,4 +1,0 @@
-// Plot's reusable chart API, independent of the demo application's entry.
-using UI :: #import "Kryon";
-using Candle :: #import "candle_chart";
-using Line :: #import "line_chart";

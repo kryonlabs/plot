@@ -1,5 +1,5 @@
 [package]
-name = "Plot"
+name = "plot"
 entry = "src/app.zi"
 module_roots = ["src", "tests"]
 bridge_modules = ["app"]
@@ -8,12 +8,14 @@ bridge_modules = ["app"]
 git = "https://github.com/ziranlang/ziran.git"
 ref = "master"
 
-[dependencies.Kryon]
+[dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
 ref = "master"
+module_aliases = { Kryon = "kryon", PlotWidget = "plot_widget" }
 
 [exports]
-Plot = "src/Plot/module.zi"
+plot = "src/module.zi"
+Plot = "src/module.zi"
 
 [tool.kryon]
 default_profile = "cairo"

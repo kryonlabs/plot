@@ -2,9 +2,9 @@
   "format": 1,
   "packages": [
     {
-      "commit": "4235447bbd0fa9bf42dcc276381cb1c3dd55f5a2",
+      "commit": "938c41faece4b821c76318c45efa051ddb85604f",
       "dependencies": {},
-      "id": "pc63f351f658a1a15",
+      "id": "pfc84fe5aa8556c7c",
       "name": "Kryon",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kryon.git"
@@ -12,9 +12,9 @@
   ],
   "root": {
     "dependencies": {
-      "Kryon": "pc63f351f658a1a15"
+      "kryon": "pfc84fe5aa8556c7c"
     },
-    "name": "Plot"
+    "name": "plot"
   },
   "toolchain": {
     "commit": "f3374188260b7c2fc497f0abed1d38fcb822547a",
