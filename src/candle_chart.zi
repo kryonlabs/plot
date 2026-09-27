@@ -1,6 +1,5 @@
 using UI :: #import "Kryon";
-
-using PlotMode;
+using PlotWidget :: #import "PlotWidget";
 
 PriceBar :: struct {
     timestamp: s64
@@ -178,7 +177,7 @@ CandleChart :: (session: Session, props: CandleChartProps,
     bars: []PriceBar, range: CandleRange) {
     background: PlotProps
     background.key = props.key
-    background.mode = cast(PlotMode)PlotLines
+    background.mode = cast(PlotMode)0
     background.bounds = props.bounds
     background.semantic_label = props.semantic_label
     empty: [1]float32

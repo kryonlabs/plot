@@ -1,6 +1,5 @@
 using UI :: #import "Kryon";
-
-using PlotMode;
+using PlotWidget :: #import "PlotWidget";
 
 ChartRange :: struct {
     low: float32
@@ -42,7 +41,7 @@ LineChart :: (session: Session, props: LineChartProps,
     values: []float32, chart_range: ChartRange) {
     background: PlotProps
     background.key = props.key
-    background.mode = cast(PlotMode)PlotLines
+    background.mode = cast(PlotMode)0
     background.bounds = props.bounds
     background.semantic_label = props.semantic_label
     Plot(session, background, values[0:0])
