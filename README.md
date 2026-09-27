@@ -16,6 +16,14 @@ exports `Plot/module.zi` for other packages. That module re-exports Plot's
 charts and Kryon's public UI surface; app code can use
 `using Charts :: #import "Plot";`.
 
+To add Plot to another Ziran project, run:
+
+```sh
+ziran add Plot --git https://github.com/kryonlabs/plot.git
+```
+
+The resulting lockfile includes Plot and its Kryon dependency.
+
 Other applications can still use `src/candle_chart.zi` and
 `src/line_chart.zi` while packaging of reusable chart modules is being
 finished. Atr currently links those sources from its `src/` directory.
