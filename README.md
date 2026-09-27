@@ -14,7 +14,7 @@ backend; `make check` checks the source and runs the nonvisual indicator test.
 The checked-in `ziran.lock` pins both Ziran and Kryon to exact commits. Plot
 exports `src/module.zi` for other packages. That module re-exports Plot's
 charts and Kryon's public UI surface; app code can use
-`using Charts :: #import "plot";`.
+`using Charts :: #import "Plot";`.
 
 To add Plot to another Ziran project, run:
 
@@ -25,7 +25,7 @@ ziran add kryonlabs/plot
 Then import its public module:
 
 ```zi
-using Charts :: #import "plot";
+using Charts :: #import "Plot";
 ```
 
 The package exports `PriceBar`, `CandleChartProps`, `CandleChart`,
@@ -37,3 +37,6 @@ links or copied chart files are needed in a consuming package. Run
 
 ATR currently uses source links while its older project layout is migrated
 to a Ziran package manifest. Other packages can use the dependency directly.
+Public module names use `UpperCamelCase` (`Kryon`, `PlotWidget`, `Plot`).
+Lowercase names such as `plot_widget` are implementation modules; the
+lowercase `plot` export remains available for existing consumers.

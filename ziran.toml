@@ -11,9 +11,10 @@ ref = "master"
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
 ref = "master"
-module_aliases = { Kryon = "kryon", PlotWidget = "plot_widget" }
+module_aliases = { Kryon = "Kryon", PlotWidget = "PlotWidget" }
 
 [exports]
+# Public module is Plot; the lowercase export is retained for older imports.
 plot = "src/module.zi"
 Plot = "src/module.zi"
 

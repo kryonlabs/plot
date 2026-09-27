@@ -1,5 +1,5 @@
-using UI :: #import "kryon";
-using PlotWidget :: #import "plot_widget";
+using UI :: #import "Kryon";
+using PlotWidget :: #import "PlotWidget";
 
 ChartRange :: struct {
     low: float32
