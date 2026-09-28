@@ -2,20 +2,20 @@
   "format": 1,
   "packages": [
     {
-      "commit": "938c41faece4b821c76318c45efa051ddb85604f",
+      "commit": "c7b623317e2a4603186d38534873848888bc3331",
       "dependencies": {},
-      "id": "pfc84fe5aa8556c7c",
+      "id": "pb1eb996de20f3de6",
       "name": "Kryon",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kryon.git"
     }
   ],
   "root": {
-    "dependencies": {"kryon": "pfc84fe5aa8556c7c"},
+    "dependencies": {"kryon": "pb1eb996de20f3de6"},
     "name": "plot"
   },
   "toolchain": {
-    "commit": "9ae10a7c902c3a86b491cbc53f7ab7d4efbd6579",
+    "commit": "d61e47f8da3b17b7855f247624b1ade4104d45c3",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }
