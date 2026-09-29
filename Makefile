@@ -25,7 +25,7 @@ check:
 	$(ZIRAN) tool kryon check
 	$(ZIRAN) bundle --project $(BINDS) --entry plot_widget_behavior:main \
 		-o build/plot-widget.zib tests/plot_widget_behavior.zi
-	test "$$($(ZIRAN) run build/plot-widget.zib)" = 0
+	test "$$($(ZIRAN) run --project build/plot-widget.zib)" = 0
 	@if command -v go >/dev/null; then \
 		rm -rf build/plot-widget-go && \
 		$(ZIRAN) build --project --target=go --pkg main --exe $(BINDS) \
