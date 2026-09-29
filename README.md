@@ -1,8 +1,9 @@
 # Plot
 
-`plot` is a Ziran app package that depends on the separate Kryon package. Its candle
-chart draws OHLC bodies and wicks, volume, SMA 20, SMA 50, and EMA 20 over
-Kryon's generic `Plot` surface. `ChartMarker` and `CandleMarkers` add dated,
+`plot` is a Ziran package that depends on the separate Kryon package. It
+owns `PlotWidget`, a retained Kryon widget that draws lines, bars, markers,
+and axes over caller-owned values, and its candle chart draws OHLC bodies and
+wicks, volume, SMA 20, SMA 50, and EMA 20 over that surface. `ChartMarker` and `CandleMarkers` add dated,
 clickable markers while leaving each marker's meaning to the caller. It also
 has a simple line chart. Both accept
 caller-owned values and colors; market data, networking, price formatting,
@@ -19,13 +20,14 @@ charts and Kryon's public UI surface; app code can use
 To add Plot to another Ziran project, run:
 
 ```sh
-ziran add kryonlabs/plot
+ziran add https://github.com/kryonlabs/plot.git
 ```
 
-Then import its public module:
+Then import its public module, or only the chart surface:
 
 ```zi
-using Charts :: #import "Plot";
+using Charts :: #import "plot/Plot";
+using Surface :: #import "plot/PlotWidget";
 ```
 
 The package exports `PriceBar`, `CandleChartProps`, `CandleChart`,

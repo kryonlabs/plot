@@ -1,5 +1,5 @@
 #import "candle_chart"
-using UI :: #import "Kryon";
+using UI :: #import "kryon/Kryon";
 
 #program_export
 main :: () -> s32 {

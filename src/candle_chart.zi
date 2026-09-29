@@ -1,4 +1,4 @@
-using UI :: #import "Kryon";
+using UI :: #import "kryon/Kryon";
 using PlotWidget :: #import "PlotWidget";
 
 PriceBar :: struct {
