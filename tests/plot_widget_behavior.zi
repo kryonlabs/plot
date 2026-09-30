@@ -78,6 +78,27 @@ Frame :: () -> s32 {
 }
 
 #import "plot_widget_host"
+#import "line_chart"
+
+// This week over last week: five grid lines, then two segments drawn twice
+// for each series.
+CompareLines :: () -> s32 {
+    current: [3]float32 = .[1.0, 2.0, 3.0]
+    previous: [3]float32 = .[4.0, 2.0, 2.0]
+    both: ChartRange = ChartRangeForBoth(current[:], previous[:])
+    if both.low != 1.0 || both.high != 4.0 { return 3 }
+    chart: LineChartProps
+    chart.key = cast(u64)21
+    chart.bounds = Rectangle.{10.0, 10.0, 100.0, 60.0}
+    chart.semantic_label = "Visits this week and last week"
+    before: s32 = PlotLineCount()
+    TreeStart(TestSession(), cast(u64)2, Rectangle.{0.0, 0.0, 140.0, 180.0})
+    LineChartCompare(TestSession(), chart, current[:], previous[:], both)
+    if !TreeFinish(TestSession()) { return 4 }
+    PaintFlush(TestSession())
+    if PlotLineCount() - before != 5 + 4 + 4 { return 5 }
+    return 0
+}
 
 #program_export
 main :: () -> s32 {
@@ -91,5 +112,5 @@ main :: () -> s32 {
             PlotLabels() != (index + 1) * 4 { return 2 }
         index += 1
     }
-    return 0
+    return CompareLines()
 }
