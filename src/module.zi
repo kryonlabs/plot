@@ -2,3 +2,4 @@
 using UI :: #import "kryon/Kryon";
 using Candle :: #import "candle_chart";
 using Line :: #import "line_chart";
+using Band :: #import "band_chart";

@@ -10,6 +10,7 @@ TestSession :: () -> Session {
 #import "plot"
 #import "plot_props"
 #import "plot_widget"
+#import "band_chart"
 #import "kryon/tree"
 #import "kryon/widget_kind"
 
@@ -100,8 +101,39 @@ CompareLines :: () -> s32 {
     return 0
 }
 
+// The band chart's scale, slots and the point a pointer shows.
+BandChecks :: () -> s32 {
+    props: BandChartProps
+    props.bounds = Rectangle.{0.0, 0.0, 312.0, 140.0}
+    props.slots = 30
+    props.min_value = 0.0
+    props.max_value = 10.0
+    props.top_label = "10"
+    props.bottom_label = "0"
+    props.font = 14
+    plot: Rectangle = BandChartPlotBounds(props)
+    if plot.x != 28.0 || plot.y != 10.0 || plot.width != 276.0 ||
+        plot.height != 120.0 { return 10 }
+    if BandChartY(plot, props, 10.0) != 10.0 || BandChartY(plot, props, 0.0) != 130.0 ||
+        BandChartY(plot, props, 5.0) != 70.0 || BandChartY(plot, props, 20.0) != 10.0 {
+        return 11
+    }
+    first: float32 = BandChartSlotX(plot, props, 0)
+    if first < 32.5 || first > 32.7 { return 12 }
+    points: [3]BandChartPoint
+    points[0] = BandChartPoint.{.slot = 0, .value = 2.0, .good = 1}
+    points[1] = BandChartPoint.{.slot = 10, .value = 5.0, .good = 0}
+    points[2] = BandChartPoint.{.slot = 29, .value = 9.0, .good = -1}
+    if BandChartNearest(props, points[:], BandChartSlotX(plot, props, 10) + 2.0, 20.0) != 1 ||
+        BandChartNearest(props, points[:], 300.0, 120.0) != 2 ||
+        BandChartNearest(props, points[0:0], 50.0, 50.0) != -1 { return 13 }
+    return 0
+}
+
 #program_export
 main :: () -> s32 {
+    band := BandChecks()
+    if band != 0 { return band }
     index: s32 = 0
     while index < 2 {
         if Frame() != index || PlotHostFailed() { return 1 }
