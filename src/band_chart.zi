@@ -1,0 +1,252 @@
+// Values over a row of slots, such as the last 30 days, against a band of
+// good values that can change from one slot on. Each point is good, not, or
+// unjudged; the point under the pointer, or tapped last, shows its label.
+using UI :: #import "kryon/Kryon";
+using Widgets :: #import "kryon/Widgets";
+#import "kryon/font_metrics"
+#import "kryon/tree_input"
+
+BandChartPoint :: struct {
+    // 0 is the leftmost slot.
+    slot: s32
+    value: float32
+    // 1 good, 0 not good, -1 not judged.
+    good: s32
+    // Shown while the point is hovered or after it is tapped, such as
+    // "12 Oct · 07:40 · good: before 08:00".
+    label: string
+}
+
+// The good values from slot from on, until the next band starts. A bound
+// that is not set is open. A wrapping band is good above low or below
+// high, as a time of day between 22:00 and 01:00.
+BandChartBand :: struct {
+    from: s32
+    low: float32
+    high: float32
+    has_low: bool
+    has_high: bool
+    wraps: bool
+}
+
+BandChartProps :: struct {
+    key: u64
+    bounds: Rectangle
+    semantic_label: string
+    slots: s32
+    min_value: float32
+    max_value: float32
+    // Bars from min_value, or dots.
+    bars: bool
+    // The scale's top and bottom values as the caller writes them.
+    top_label: string
+    bottom_label: string
+    font: s32
+    good_color: Color
+    other_color: Color
+    band_color: Color
+    grid_color: Color
+    text_color: Color
+    label_fill: Color
+}
+
+BandChartResult :: struct {
+    // The point whose label shows, or -1.
+    shown: s32
+}
+
+BandChartAxisWidth :: (props: BandChartProps) -> float32 {
+    widest: s32 = GlyphWidth(props.top_label, props.font, "")
+    bottom: s32 = GlyphWidth(props.bottom_label, props.font, "")
+    if bottom > widest { widest = bottom }
+    return cast(float32)widest + 12.0
+}
+
+// The plot's area: right of the scale labels, with room for dots at the
+// top and bottom.
+#program_export
+BandChartPlotBounds :: (props: BandChartProps) -> Rectangle {
+    axis: float32 = BandChartAxisWidth(props)
+    return Rectangle.{props.bounds.x + axis, props.bounds.y + 10.0,
+        props.bounds.width - axis - 8.0, props.bounds.height - 20.0}
+}
+
+#program_export
+BandChartY :: (plot: Rectangle, props: BandChartProps, value: float32) -> float32 {
+    span: float32 = props.max_value - props.min_value
+    if span <= 0.0 { span = 1.0 }
+    fraction: float32 = (value - props.min_value) / span
+    if fraction < 0.0 { fraction = 0.0 }
+    if fraction > 1.0 { fraction = 1.0 }
+    return plot.y + plot.height * (1.0 - fraction)
+}
+
+#program_export
+BandChartSlotX :: (plot: Rectangle, props: BandChartProps, slot: s32) -> float32 {
+    slots: s32 = props.slots
+    if slots < 1 { slots = 1 }
+    return plot.x + plot.width * (cast(float32)slot + 0.5) / cast(float32)slots
+}
+
+// The point nearest to x and y, preferring the pointer's own slot, or -1.
+#program_export
+BandChartNearest :: (props: BandChartProps, points: []BandChartPoint,
+    x: float32, y: float32) -> s32 {
+    plot: Rectangle = BandChartPlotBounds(props)
+    nearest: s32 = -1
+    best: float32 = 0.0
+    index: s32 = 0
+    while index < cast(s32)points.count {
+        dx: float32 = BandChartSlotX(plot, props, points[index].slot) - x
+        dy: float32 = BandChartY(plot, props, points[index].value) - y
+        if props.bars { dy = 0.0 }
+        distance: float32 = dx * dx * 4.0 + dy * dy
+        if nearest < 0 || distance < best {
+            nearest = index
+            best = distance
+        }
+        index += 1
+    }
+    return nearest
+}
+
+// The bands' good areas, and a line where a later band starts.
+BandChartBands :: (session: Session, props: BandChartProps, plot: Rectangle,
+    bands: []BandChartBand) {
+    slots: s32 = props.slots
+    if slots < 1 { slots = 1 }
+    slot_w: float32 = plot.width / cast(float32)slots
+    index: s32 = 0
+    while index < cast(s32)bands.count {
+        band: BandChartBand = bands[index]
+        start: s32 = band.from
+        if start < 0 { start = 0 }
+        end: s32 = slots
+        if index + 1 < cast(s32)bands.count && bands[index + 1].from < end {
+            end = bands[index + 1].from
+        }
+        if end > start && (band.has_low || band.has_high) {
+            left: float32 = plot.x + slot_w * cast(float32)start
+            width: float32 = slot_w * cast(float32)(end - start)
+            top: float32 = plot.y
+            bottom: float32 = plot.y + plot.height
+            if band.wraps {
+                low_y: float32 = BandChartY(plot, props, band.low)
+                high_y: float32 = BandChartY(plot, props, band.high)
+                PaintRoundedFill(session, -1, Rectangle.{left, top, width,
+                    low_y - top}, 0.0, 1, props.band_color)
+                PaintRoundedFill(session, -1, Rectangle.{left, high_y, width,
+                    bottom - high_y}, 0.0, 1, props.band_color)
+            } else {
+                if band.has_high { top = BandChartY(plot, props, band.high) }
+                if band.has_low { bottom = BandChartY(plot, props, band.low) }
+                if bottom > top {
+                    PaintRoundedFill(session, -1, Rectangle.{left, top, width,
+                        bottom - top}, 0.0, 1, props.band_color)
+                }
+            }
+        }
+        if index > 0 && start > 0 && start < slots {
+            PaintLine(session, -1, Rectangle.{plot.x + slot_w * cast(float32)start,
+                plot.y, 0.0, plot.height}, props.grid_color)
+        }
+        index += 1
+    }
+}
+
+// The shown point's label in a box above it, kept inside the chart.
+BandChartLabel :: (session: Session, props: BandChartProps, plot: Rectangle,
+    point: BandChartPoint) {
+    if point.label == "" { return }
+    x: float32 = BandChartSlotX(plot, props, point.slot)
+    y: float32 = BandChartY(plot, props, point.value)
+    PaintLine(session, -1, Rectangle.{x, plot.y, 0.0, plot.height}, props.grid_color)
+    text_w: float32 = cast(float32)GlyphWidth(point.label, props.font, "")
+    box_w: float32 = text_w + 16.0
+    box_h: float32 = cast(float32)props.font + 12.0
+    box_x: float32 = x - box_w * 0.5
+    if box_x < props.bounds.x { box_x = props.bounds.x }
+    if box_x + box_w > props.bounds.x + props.bounds.width {
+        box_x = props.bounds.x + props.bounds.width - box_w
+    }
+    box_y: float32 = y - box_h - 10.0
+    if box_y < props.bounds.y { box_y = y + 10.0 }
+    if box_y + box_h > props.bounds.y + props.bounds.height {
+        box_y = props.bounds.y + props.bounds.height - box_h
+    }
+    PaintRoundedFill(session, -1, Rectangle.{box_x, box_y, box_w, box_h},
+        6.0, 8, props.label_fill)
+    PaintClippedLabel(session, -1, point.label, cast(s32)(box_x + 8.0),
+        cast(s32)(box_y + 6.0), props.font, props.text_color, props.bounds)
+}
+
+// Draws the chart and returns the point whose label shows: the one under
+// the pointer, or on a touch screen the one tapped last.
+#program_export
+BandChart :: (session: Session, props: BandChartProps, points: []BandChartPoint,
+    bands: []BandChartBand) -> BandChartResult {
+    result: BandChartResult
+    result.shown = -1
+    plot: Rectangle = BandChartPlotBounds(props)
+    if plot.width <= 0.0 || plot.height <= 0.0 { return result }
+    area: PressProps
+    area.key = props.key
+    area.bounds = props.bounds
+    area.label = props.semantic_label
+    pressed: PressResult = Press(session, area)
+    BandChartBands(session, props, plot, bands)
+    PaintLine(session, -1, Rectangle.{plot.x, plot.y + plot.height,
+        plot.width, 0.0}, props.grid_color)
+    PaintClippedLabel(session, -1, props.top_label, cast(s32)props.bounds.x,
+        cast(s32)(plot.y - cast(float32)props.font * 0.5), props.font,
+        props.text_color, props.bounds)
+    PaintClippedLabel(session, -1, props.bottom_label, cast(s32)props.bounds.x,
+        cast(s32)(plot.y + plot.height - cast(float32)props.font * 0.5), props.font,
+        props.text_color, props.bounds)
+    slots: s32 = props.slots
+    if slots < 1 { slots = 1 }
+    slot_w: float32 = plot.width / cast(float32)slots
+    // Bars of one slot share it side by side.
+    per_slot: [366]s32
+    placed: [366]s32
+    for point: points {
+        if point.slot >= 0 && point.slot < 366 { per_slot[point.slot] += 1 }
+    }
+    for point: points {
+        if point.slot < 0 || point.slot >= slots || point.slot >= 366 { continue }
+        color: Color = ifx point.good == 0 then props.other_color else props.good_color
+        x: float32 = BandChartSlotX(plot, props, point.slot)
+        y: float32 = BandChartY(plot, props, point.value)
+        if props.bars {
+            share: float32 = slot_w / cast(float32)per_slot[point.slot]
+            left: float32 = plot.x + slot_w * cast(float32)point.slot +
+                share * cast(float32)placed[point.slot] + 1.0
+            width: float32 = share - 2.0
+            if width < 1.0 { width = 1.0 }
+            height: float32 = plot.y + plot.height - y
+            if height < 2.0 { height = 2.0 }
+            PaintRoundedFill(session, -1, Rectangle.{left, plot.y + plot.height - height,
+                width, height}, 0.0, 1, color)
+            placed[point.slot] += 1
+        } else {
+            dot: float32 = 8.0
+            PaintRoundedFill(session, -1, Rectangle.{x - dot * 0.5, y - dot * 0.5,
+                dot, dot}, dot * 0.5, 12, color)
+        }
+    }
+    if pressed.node >= 0 && (TreeHoveredAt(session, pressed.node) || pressed.down ||
+        pressed.released) {
+        pointer: PointerFrame = PointerSample(session)
+        x: float32 = pointer.x
+        y: float32 = pointer.y
+        if pressed.down || pressed.released {
+            x = pressed.x
+            y = pressed.y
+        }
+        result.shown = BandChartNearest(props, points, x, y)
+    }
+    if result.shown >= 0 {
+        BandChartLabel(session, props, plot, points[result.shown])
+    }
+    return result
+}
