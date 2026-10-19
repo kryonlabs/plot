@@ -2,6 +2,14 @@
   "format": 1,
   "packages": [
     {
+      "commit": "cade72151139041b04db6e139633052f4e05c235",
+      "dependencies": {"raylib": "p5a77c9c35110e925"},
+      "id": "p34b745b467caba0d",
+      "name": "kryon",
+      "ref": "master",
+      "url": "https://github.com/kryonlabs/kryon.git"
+    },
+    {
       "commit": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
       "dependencies": {},
       "id": "p5a77c9c35110e925",
@@ -9,22 +17,14 @@
       "ref": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
       "source": true,
       "url": "https://github.com/raysan5/raylib.git"
-    },
-    {
-      "commit": "7d574fde593baf595accfa11b13e47bcd3663e52",
-      "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "pf3981f4e68ebbf80",
-      "name": "kryon",
-      "ref": "master",
-      "url": "https://github.com/kryonlabs/kryon.git"
     }
   ],
   "root": {
-    "dependencies": {"kryon": "pf3981f4e68ebbf80"},
+    "dependencies": {"kryon": "p34b745b467caba0d"},
     "name": "plot"
   },
   "toolchain": {
-    "commit": "201be1072cfb2ad59b4060f8579db36f6848b8cb",
+    "commit": "ea9d6254adf553fdf88b41f84d53a66413b86858",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }
