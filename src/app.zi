@@ -1,4 +1,4 @@
-using Charts :: #import "module";
+using Charts :: #import "Plot";
 
 #program_export
 Frame :: (session: Session, viewport: Rectangle) -> s32 {

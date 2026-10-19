@@ -13,7 +13,9 @@ Install the Ziran launcher once with `make install-user` in Ziran, then run
 `ziran fetch` and `make build` here. `make run` opens a small demo on the Cairo
 backend; `make check` checks the source and runs the nonvisual indicator test.
 The checked-in `ziran.lock` pins both Ziran and Kryon to exact commits. Plot
-exports `src/module.zi` for other packages. That module re-exports Plot's
+exports `src/Plot/module.zi` for other packages, so `plot/Plot` resolves by
+its file both in projects and in builds that name `--module-path plot=DIR`.
+That module re-exports Plot's
 charts and Kryon's public UI surface; app code can use
 `using Charts :: #import "Plot";`.
 
