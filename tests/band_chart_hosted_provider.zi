@@ -1,0 +1,14 @@
+// The host side of the hosted band chart test: it checks what the bundle
+// sent and answers with the second point.
+#import "kryon/session"
+#import "band_chart_props"
+
+#program_export "BandChartHostedHost"
+HostedBandChart :: (session: Session, props: BandChartProps, points: []BandChartPoint,
+    bands: []BandChartBand) -> BandChartResult {
+    if session.slot != 4 || props.slots != 7 || points.count != 2 ||
+    points[0].label != "One" || bands.count != 1 || !bands[0].has_low {
+        return BandChartResult.{.shown = -1}
+    }
+    return BandChartResult.{.shown = 1}
+}

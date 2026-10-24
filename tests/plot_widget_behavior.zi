@@ -11,6 +11,7 @@ TestSession :: () -> Session {
 #import "plot_props"
 #import "plot_widget"
 #import "band_chart"
+#import "band_chart_props"
 #import "kryon/tree"
 #import "kryon/widget_kind"
 

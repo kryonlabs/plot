@@ -1,0 +1,87 @@
+// Draws the band charts a portable bundle asks for. A host that runs such a
+// bundle answers BandChartHostedHost with BandChartHostCall, beside Kryon's
+// WidgetHostCall, while the bundle draws its frame in the host's session.
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "kryon/session"
+#import "kryon/hosted_values"
+#import "kryon/widget_codec"
+#import "band_chart"
+#import "band_chart_props"
+#import "band_chart_codec"
+
+using HostValueKind;
+
+// The most points and bands one chart takes, a year of days each.
+BAND_CHART_HOST_LIMIT :: 366
+
+band_chart_host_props_codec: WidgetBandChartPropsCodec;
+band_chart_host_result_codec: WidgetBandChartResultCodec;
+band_chart_host_session_codec: WidgetSessionCodec;
+band_chart_host_points: [BAND_CHART_HOST_LIMIT]BandChartPoint;
+band_chart_host_point_codecs: [BAND_CHART_HOST_LIMIT]WidgetBandChartPointCodec;
+band_chart_host_bands: [BAND_CHART_HOST_LIMIT]BandChartBand;
+band_chart_host_band_codecs: [BAND_CHART_HOST_LIMIT]WidgetBandChartBandCodec;
+
+// The module a bundle names the chart by: band_chart, or with the package's
+// name in front when it imports plot/band_chart.
+BandChartHostModule :: (module: string) -> bool {
+    return module == "band_chart" || module == "plot_band_chart" ||
+    module == "plot/band_chart"
+}
+
+// The calls BandChartHostCall answers, for checking a bundle's capabilities
+// before it runs.
+BandChartHostSupports :: (module: string, function: string) -> bool {
+    return BandChartHostModule(module) && function == "BandChartHostedHost"
+}
+
+// Answers a bundle's BandChart in session, the frame the host draws; 0 for a
+// call it does not answer or refuses.
+BandChartHostCall :: (session: Session, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if !BandChartHostSupports(TextFromCString(module), TextFromCString(function)) ||
+    count != 4 || !WidgetValidSession(arguments[0]) ||
+    !WidgetValidBandChartProps(arguments[1]) {
+        return 0
+    }
+    asked := WidgetDecodeSession(arguments[0], *band_chart_host_session_codec)
+    if asked.slot != session.slot || asked.epoch != session.epoch {
+        return 0
+    }
+    points := arguments[2]
+    bands := arguments[3]
+    if points.kind != cast(s32)HostSlice || TextFromCString(points.type_name) != "[]BandChartPoint" ||
+    points.length > cast(usize)BAND_CHART_HOST_LIMIT ||
+    (points.length > cast(usize)0 && points.elements == null) {
+        return 0
+    }
+    if bands.kind != cast(s32)HostSlice || TextFromCString(bands.type_name) != "[]BandChartBand" ||
+    bands.length > cast(usize)BAND_CHART_HOST_LIMIT ||
+    (bands.length > cast(usize)0 && bands.elements == null) {
+        return 0
+    }
+    index: usize = 0
+    while index < points.length {
+        if !WidgetValidBandChartPoint(points.elements[index]) {
+            return 0
+        }
+        band_chart_host_points[index] = WidgetDecodeBandChartPoint(points.elements[index],
+            *band_chart_host_point_codecs[index])
+        index += cast(usize)1
+    }
+    index = 0
+    while index < bands.length {
+        if !WidgetValidBandChartBand(bands.elements[index]) {
+            return 0
+        }
+        band_chart_host_bands[index] = WidgetDecodeBandChartBand(bands.elements[index],
+            *band_chart_host_band_codecs[index])
+        index += cast(usize)1
+    }
+    shown := BandChart(session, WidgetDecodeBandChartProps(arguments[1],
+            *band_chart_host_props_codec),
+        band_chart_host_points[:cast(s64)points.length], band_chart_host_bands[:cast(s64)bands.length])
+    result.* = WidgetEncodeBandChartResult(shown, *band_chart_host_result_codec)
+    return 1
+}

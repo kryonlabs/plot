@@ -44,3 +44,15 @@ to a Ziran package manifest. Other packages can use the dependency directly.
 Public module names use `UpperCamelCase` (`Kryon`, `PlotWidget`, `Plot`).
 Lowercase names such as `plot_widget` are implementation modules; the
 lowercase `plot` export remains available for existing consumers.
+
+## Band charts in portable bundles
+
+`BandChart(session, props, points, bands)` draws values over a row of slots
+against the range that counts as good. A portable bundle built with
+`KRYON_HOSTED_UI` sends the chart to its host as `BandChartHostedHost`. The
+host answers it with `BandChartHostCall(session, module, function, arguments,
+count, result)` from `band_chart_host`, beside Kryon's `WidgetHostCall`, and
+allows it where `BandChartHostSupports(module, function)` says so. The
+records are in `band_chart_props`, and `scripts/generate-codec.py` generates
+their codec on top of Kryon's widget codec. A chart takes at most 366 points
+and 366 bands.

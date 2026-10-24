@@ -1,0 +1,53 @@
+// The records a band chart takes and answers, apart from its drawing, so a
+// portable bundle and its host share them.
+#import "kryon/geometry"
+#import "kryon/drawing_props"
+
+BandChartPoint :: struct {
+    // 0 is the leftmost slot.
+    slot: s32
+    value: float32
+    // 1 good, 0 not good, -1 not judged.
+    good: s32
+    // Shown while the point is hovered or after it is tapped, such as
+    // "12 Oct · 07:40 · good: before 08:00".
+    label: string
+}
+
+// The good values from slot from on, until the next band starts. A bound
+// that is not set is open. A wrapping band is good above low or below
+// high, as a time of day between 22:00 and 01:00.
+BandChartBand :: struct {
+    from: s32
+    low: float32
+    high: float32
+    has_low: bool
+    has_high: bool
+    wraps: bool
+}
+
+BandChartProps :: struct {
+    key: u64
+    bounds: Rectangle
+    semantic_label: string
+    slots: s32
+    min_value: float32
+    max_value: float32
+    // Bars from min_value, or dots.
+    bars: bool
+    // The scale's top and bottom values as the caller writes them.
+    top_label: string
+    bottom_label: string
+    font: s32
+    good_color: Color
+    other_color: Color
+    band_color: Color
+    grid_color: Color
+    text_color: Color
+    label_fill: Color
+}
+
+BandChartResult :: struct {
+    // The point whose label shows, or -1.
+    shown: s32
+}

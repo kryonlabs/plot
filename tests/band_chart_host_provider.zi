@@ -1,0 +1,74 @@
+// What the band chart host test's frame paints, counted: text widths of
+// eight units a byte, and every shape and label the chart queues.
+#import "kryon/drawing_props"
+#import "kryon/geometry"
+
+band_chart_host_shapes: s32;
+band_chart_host_labels: s32;
+
+#program_export
+MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 {
+    unused font
+    unused typeface
+    return cast(s32)value.count * 8
+}
+
+#program_export
+RasterRoundedRectangle :: (bounds: Rectangle, radius: float32, segments: s32, color: Color) {
+    unused bounds
+    unused radius
+    unused segments
+    unused color
+    band_chart_host_shapes += 1
+}
+
+#program_export
+RasterRoundedRectangleOutline :: (bounds: Rectangle, radius: float32, segments: s32,
+    thickness: float32, color: Color) {
+    unused bounds
+    unused radius
+    unused segments
+    unused thickness
+    unused color
+}
+
+#program_export
+RasterLine :: (bounds: Rectangle, color: Color) {
+    unused bounds
+    unused color
+}
+
+#program_export
+RasterText :: (text: string, x: s32, y: s32, font: s32, color: Color) {
+    unused text
+    unused x
+    unused y
+    unused font
+    unused color
+    band_chart_host_labels += 1
+}
+
+#program_export
+RasterTextClipped :: (text: string, x: s32, y: s32, font: s32, color: Color, clip: Rectangle) {
+    unused text
+    unused x
+    unused y
+    unused font
+    unused color
+    unused clip
+    band_chart_host_labels += 1
+}
+
+#program_export
+RasterImage :: (path: string, texture_id: u32, source: Rectangle, destination: Rectangle,
+    clip: Rectangle, origin: Vector2, rotation: float32, radius: float32, tint: Color) {
+    unused path
+    unused texture_id
+    unused source
+    unused destination
+    unused clip
+    unused origin
+    unused rotation
+    unused radius
+    unused tint
+}

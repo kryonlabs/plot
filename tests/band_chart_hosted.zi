@@ -1,0 +1,20 @@
+// A portable bundle's BandChart forwards its props, points and bands to the
+// host, and returns the point the host says shows its label.
+#import "kryon/session"
+#import "band_chart"
+#import "band_chart_props"
+#import "band_chart_hosted_provider"
+
+#program_export
+main :: () -> s32 {
+    session := Session.{.slot = 4, .epoch = cast(u64)12}
+    points: [2]BandChartPoint = .[BandChartPoint.{.slot = 0, .value = 1.0, .good = 1,
+        .label = "One"}, BandChartPoint.{.slot = 1, .value = 2.0}]
+    bands: [1]BandChartBand = .[BandChartBand.{.low = 1.0, .has_low = true}]
+    shown := BandChart(session, BandChartProps.{.slots = 7, .max_value = 2.0}, points[:],
+        bands[:])
+    if shown.shown != 1 {
+        return 1
+    }
+    return 0
+}

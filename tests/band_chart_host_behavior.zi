@@ -1,0 +1,91 @@
+// A portable bundle's band chart draws through its host: the host decodes
+// the chart's props, points and bands and draws it in its own frame, and
+// refuses another session, too many points or another module's call.
+#import "std/bundle_host"
+#import "std/c_string"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/drawing_props"
+#import "kryon/tree"
+#import "kryon/Frame"
+#import "kryon/paint_queue"
+#import "kryon/hosted_values"
+#import "kryon/widget_codec"
+#import "band_chart_props"
+#import "band_chart_codec"
+#import "band_chart_host"
+#import "band_chart_host_provider"
+
+using HostValueKind;
+
+session_codec: WidgetSessionCodec;
+props_codec: WidgetBandChartPropsCodec;
+result_codec: WidgetBandChartResultCodec;
+point_codecs: [400]WidgetBandChartPointCodec;
+point_values: [400]HostValue;
+band_codecs: [2]WidgetBandChartBandCodec;
+band_values: [2]HostValue;
+module_name: [64]u8;
+function_name: [64]u8;
+
+Call :: (session: Session, module: string, function: string, arguments: []HostValue,
+    result: *HostValue) -> s32 {
+    unused CopyCString(module, module_name[:])
+    unused CopyCString(function, function_name[:])
+    return BandChartHostCall(session, *module_name[0], *function_name[0], *arguments[0],
+        cast(s32)arguments.count, result)
+}
+
+#program_export
+main :: () -> s32 {
+    if !BandChartHostSupports("plot_band_chart", "BandChartHostedHost") ||
+    BandChartHostSupports("band_chart", "BandChartNearest") {
+        return 1
+    }
+    session := SessionOpen()
+    bounds := Rectangle.{0.0, 0.0, 300.0, 120.0}
+    BeginFrame(session, cast(u64)1, bounds)
+    for index: cast(s32)0..399 {
+        point := BandChartPoint.{.slot = index % 30, .value = cast(float32)(index % 7),
+            .good = index % 2, .label = "Day"}
+        point_values[index] = WidgetEncodeBandChartPoint(point, *point_codecs[index])
+    }
+    band_values[0] = WidgetEncodeBandChartBand(BandChartBand.{.low = 2.0, .has_low = true},
+        *band_codecs[0])
+    arguments: [4]HostValue
+    arguments[0] = WidgetEncodeSession(session, *session_codec)
+    arguments[1] = WidgetEncodeBandChartProps(BandChartProps.{.key = cast(u64)7,
+            .bounds = bounds, .slots = 30, .min_value = 0.0, .max_value = 6.0, .bars = true,
+            .top_label = "6", .bottom_label = "0", .font = 12,
+            .good_color = Color.{0, 128, 0, 255}, .band_color = Color.{0, 128, 0, 40},
+            .grid_color = Color.{0, 0, 0, 64}, .text_color = Color.{0, 0, 0, 255}},
+        *props_codec)
+    arguments[2] = HostValue.{.kind = cast(s32)HostSlice, .type_name = HostTextData("[]BandChartPoint"),
+        .length = cast(usize)30, .elements = *point_values[0]}
+    arguments[3] = HostValue.{.kind = cast(s32)HostSlice, .type_name = HostTextData("[]BandChartBand"),
+        .length = cast(usize)1, .elements = *band_values[0]}
+    result: HostValue
+    before := PendingPaintCount(session)
+    if Call(session, "plot_band_chart", "BandChartHostedHost", arguments[:], *result) != 1 ||
+    !WidgetValidBandChartResult(result) || PendingPaintCount(session) <= before + 30 {
+        return 2
+    }
+    // Another session, another module and too many points are refused.
+    other := SessionOpen()
+    if Call(other, "plot_band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 3
+    }
+    if Call(session, "band_chart_widget", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 4
+    }
+    arguments[2].length = cast(usize)367
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 5
+    }
+    arguments[2].length = cast(usize)30
+    arguments[3].type_name = HostTextData("[]BandChartPoint")
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 6
+    }
+    return 0
+}
