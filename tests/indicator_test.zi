@@ -1,5 +1,5 @@
 #import "candle_chart"
-using UI :: #import "kryon/Kryon";
+#import "kryon/geometry"
 
 #program_export
 main :: () -> s32 {
@@ -32,5 +32,24 @@ main :: () -> s32 {
         bars[0].timestamp)
     if visible != 150.0 { return 9 }
     if missing != -1.0 { return 10 }
+    intrabar: float32 = CandleMarkerX(values, 3, bounds,
+        bars[3].timestamp + 1234)
+    if intrabar != visible { return 11 }
+    micro: [2]PriceBar
+    micro[0] = .{.timestamp = 1, .low = 0.000010,
+        .high = 0.000011, .close = 0.0000105}
+    micro[1] = .{.timestamp = 2, .low = 0.0000102,
+        .high = 0.0000112, .close = 0.000011}
+    micro_range: CandleRange = CandleRangeFor(micro[:], 2)
+    if micro_range.max_value - micro_range.min_value >= 0.001 {
+        return 12
+    }
+    single: [1]PriceBar
+    single[0].timestamp = 1000
+    if CandleMarkerX(single[:], 1, bounds, 1000) != 150.0 { return 13 }
+    if CandleMarkerX(single[:], 1, bounds, 999) != -1.0 { return 14 }
+    if CandleMarkerX(single[:], 1, bounds, 1001) != -1.0 { return 15 }
+    after_last: s64 = bars[4].timestamp + 86400
+    if CandleMarkerX(values, 3, bounds, after_last) != -1.0 { return 16 }
     return 0
 }

@@ -19,6 +19,10 @@ Plot = "src/Plot/module.zi"
 # The chart surface alone, for apps that draw their own series.
 PlotWidget = "src/PlotWidget/module.zi"
 
+band_chart = "src/band_chart.zi"
+band_chart_props = "src/band_chart_props.zi"
+band_chart_host = "src/band_chart_host.zi"
+
 [tool.kryon]
 default_profile = "cairo"
 

@@ -1,5 +1,8 @@
 // Reusable chart API, independent of the demo application's entry.
-using UI :: #import "kryon/Kryon";
+#import "kryon/drawing_props"
+#import "kryon/geometry"
+#import "kryon/paint_queue"
+#import "kryon/session"
 using Candle :: #import "candle_chart";
 using Line :: #import "line_chart";
 using Band :: #import "band_chart";

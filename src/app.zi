@@ -1,4 +1,8 @@
 using Charts :: #import "Plot";
+TextWidget :: #import "kryon/text";
+#import "kryon/drawing_props"
+#import "kryon/geometry"
+#import "kryon/session"
 
 #program_export
 Frame :: (session: Session, viewport: Rectangle) -> s32 {
@@ -24,12 +28,12 @@ Frame :: (session: Session, viewport: Rectangle) -> s32 {
         bars[index].volume = cast(float32)(80 + index * 7)
         index += 1
     }
-    title: TextProps
+    title: TextWidget.Props
     title.key = cast(u64)1
     title.text = "Plot"
-    title.font = 28
+    title.size = 28
     title.bounds = Rectangle.{32.0, 24.0, viewport.width - 64.0, 48.0}
-    Text(session, title)
+    unused TextWidget.Draw(session, title)
 
     chart: CandleChartProps
     chart.key = cast(u64)2

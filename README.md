@@ -33,7 +33,8 @@ using Surface :: #import "plot/PlotWidget";
 ```
 
 The package exports `PriceBar`, `CandleChartProps`, `CandleChart`,
-`CandleRangeFor`, `ChartMarker`, `CandleMarkers`, `SMAAt`, `EMAAt`, and
+`CandleRangeFor`, `ChartMarker`, `CandleMarkers`, `ChartPriceLevel`,
+`CandlePriceLevels`, `SMAAt`, `EMAAt`, and
 the line chart API. Ziran locks Plot and Kryon to exact commits. No source
 links or copied chart files are needed in a consuming package. Run
 `ziran update` to refresh every dependency in a project, or

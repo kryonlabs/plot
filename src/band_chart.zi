@@ -15,10 +15,13 @@
         return BandChartHostedHost(session, props, points, bands)
     }
 } else {
-    using UI :: #import "kryon/Kryon";
-    using Widgets :: #import "kryon/Widgets";
+    #import "kryon/drawing_props"
+    #import "kryon/geometry"
+    #import "kryon/paint_queue"
+    #import "kryon/session"
     #import "kryon/font_metrics"
     #import "kryon/tree_input"
+    PressWidget :: #import "kryon/press";
 
     #import "band_chart_props"
 
@@ -156,11 +159,11 @@
         result.shown = -1
         plot: Rectangle = BandChartPlotBounds(props)
         if plot.width <= 0.0 || plot.height <= 0.0 { return result }
-        area: PressProps
+        area: PressWidget.Props
         area.key = props.key
         area.bounds = props.bounds
         area.label = props.semantic_label
-        pressed: PressResult = Press(session, area)
+        pressed: PressWidget.PressResult = PressWidget.Draw(session, area)
         BandChartBands(session, props, plot, bands)
         PaintLine(session, -1, Rectangle.{plot.x, plot.y + plot.height,
             plot.width, 0.0}, props.grid_color)

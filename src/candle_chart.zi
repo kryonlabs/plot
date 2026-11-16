@@ -1,4 +1,8 @@
-using UI :: #import "kryon/Kryon";
+ButtonWidget :: #import "kryon/button";
+#import "kryon/drawing_props"
+#import "kryon/geometry"
+#import "kryon/paint_queue"
+#import "kryon/session"
 using PlotWidget :: #import "PlotWidget";
 
 PriceBar :: struct {
@@ -37,6 +41,14 @@ CandleChartProps :: struct {
 // Generic time markers. The chart caller owns the meaning of each marker.
 ChartMarker :: struct {
     timestamp: s64
+    label: string
+    color: Color
+}
+
+// Generic horizontal price levels. Callers own the meaning and formatting of
+// the level (entry, liquidation, alert, and so on).
+ChartPriceLevel :: struct {
+    value: float32
     label: string
     color: Color
 }
@@ -83,7 +95,14 @@ CandleRangeFor :: (bars: []PriceBar, visible_count: s32) -> CandleRange {
         index += 1
     }
     spread: float32 = result.high - result.low
-    if spread < 1.0 { spread = 1.0 }
+    // Do not impose a unit-sized range: it makes low-priced instruments look
+    // flat. A truly flat series receives small proportional breathing room.
+    if spread <= 0.0 {
+        scale: float32 = result.high
+        if scale < 0.0 { scale = -scale }
+        if scale < 0.000001 { scale = 0.000001 }
+        spread = scale * 0.001
+    }
     padding: float32 = spread * 0.05
     result.min_value = result.low - padding
     result.max_value = result.high + padding
@@ -262,9 +281,21 @@ CandleMarkerX :: (bars: []PriceBar, visible_count: s32,
     if bars.count == 0 { return -1.0 }
     start: s32 = CandleVisibleStart(cast(s32)bars.count, visible_count)
     count: s32 = cast(s32)bars.count - start
+    if bars.count == 1 {
+        if timestamp != bars[0].timestamp { return -1.0 }
+        return bounds.x + bounds.width / 2.0
+    }
     index: s32 = start
     while index < cast(s32)bars.count {
-        if bars[index].timestamp == timestamp {
+        next: s64 = 0
+        if index + 1 < cast(s32)bars.count {
+            next = bars[index + 1].timestamp
+        } else if index > 0 {
+            next = bars[index].timestamp +
+                (bars[index].timestamp - bars[index - 1].timestamp)
+        }
+        if timestamp >= bars[index].timestamp &&
+            (next <= bars[index].timestamp || timestamp < next) {
             return bounds.x +
                 (cast(float32)(index - start) + 0.5) *
                 bounds.width / cast(float32)count
@@ -272,6 +303,33 @@ CandleMarkerX :: (bars: []PriceBar, visible_count: s32,
         index += 1
     }
     return -1.0
+}
+
+// Draws caller-labelled horizontal levels and returns the activated level.
+#program_export
+CandlePriceLevels :: (session: Session, props: CandleChartProps,
+    range: CandleRange, levels: []ChartPriceLevel) -> s32 {
+    selected: s32 = -1
+    price: Rectangle = CandlePriceBounds(props.bounds)
+    index: s32 = 0
+    while index < cast(s32)levels.count {
+        value: float32 = levels[index].value
+        if value == value && value >= range.min_value &&
+            value <= range.max_value {
+            y: float32 = CandleY(value, price, range)
+            PaintLine(session, -1,
+                Rectangle.{price.x, y, price.width, 0.0},
+                levels[index].color)
+            level: ButtonWidget.Props
+            level.key = props.key + cast(u64)2000 + cast(u64)index
+            level.bounds = Rectangle.{price.x + price.width - 116.0,
+                y - 10.0, 112.0, 20.0}
+            level.label = levels[index].label
+            if ButtonWidget.Draw(session, level) != 0 { selected = index }
+        }
+        index += 1
+    }
+    return selected
 }
 
 // Returns the activated marker index, or -1. Markers are rendered after the
@@ -289,11 +347,11 @@ CandleMarkers :: (session: Session, props: CandleChartProps,
             PaintLine(session, -1,
                 Rectangle.{x, price.y + 22.0, 0.0, price.height - 22.0},
                 markers[index].color)
-            marker: ButtonProps
+            marker: ButtonWidget.Props
             marker.key = props.key + cast(u64)1000 + cast(u64)index
             marker.bounds = Rectangle.{x - 11.0, price.y + 2.0, 22.0, 20.0}
             marker.label = markers[index].label
-            if Button(session, marker) != 0 { selected = index }
+            if ButtonWidget.Draw(session, marker) != 0 { selected = index }
         }
         index += 1
     }

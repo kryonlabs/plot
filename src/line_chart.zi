@@ -1,4 +1,7 @@
-using UI :: #import "kryon/Kryon";
+#import "kryon/drawing_props"
+#import "kryon/geometry"
+#import "kryon/paint_queue"
+#import "kryon/session"
 using PlotWidget :: #import "PlotWidget";
 
 ChartRange :: struct {
