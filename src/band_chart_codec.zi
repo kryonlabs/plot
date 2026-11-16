@@ -8,6 +8,9 @@
 #import "band_chart_props"
 using HostValueKind;
 
+WidgetTypeBandChartProps :: "band_chart_props.BandChartProps"
+WidgetSliceTypeBandChartProps :: "[]band_chart_props.BandChartProps"
+
 WidgetBandChartPropsCodec :: struct {
     fields: [16]HostField
     bounds: WidgetRectangleCodec
@@ -20,7 +23,7 @@ WidgetBandChartPropsCodec :: struct {
 }
 
 WidgetEncodeBandChartProps :: (data: BandChartProps, codec: *WidgetBandChartPropsCodec) -> HostValue {
-    value := HostRecordValue("BandChartProps", codec.fields[:])
+    value := HostRecordValue("band_chart_props.BandChartProps", codec.fields[:])
     codec.fields[0] = HostField.{.name = HostTextData("key"), .value = HostScalar("u64", cast(s64)data.key)}
     codec.fields[1].name = HostTextData("bounds")
     codec.fields[1].value = WidgetEncodeRectangle(data.bounds, *codec.bounds)
@@ -70,7 +73,7 @@ WidgetDecodeBandChartProps :: (value: HostValue, codec: *WidgetBandChartPropsCod
 }
 
 WidgetValidBandChartProps :: (value: HostValue) -> bool {
-    if !HostRecordValid(*value, "BandChartProps") { return false }
+    if !HostRecordValid(*value, "band_chart_props.BandChartProps") { return false }
     if !HostFieldScalarValid(*value, 0, "key", "u64", cast(s32)HostUnsigned) { return false }
     if !HostFieldRecordValid(*value, 1, "bounds", WidgetValidRectangle) { return false }
     if !HostFieldScalarValid(*value, 2, "semantic_label", "string", cast(s32)HostString) { return false }
@@ -90,12 +93,15 @@ WidgetValidBandChartProps :: (value: HostValue) -> bool {
     return true
 }
 
+WidgetTypeBandChartPoint :: "band_chart_props.BandChartPoint"
+WidgetSliceTypeBandChartPoint :: "[]band_chart_props.BandChartPoint"
+
 WidgetBandChartPointCodec :: struct {
     fields: [4]HostField
 }
 
 WidgetEncodeBandChartPoint :: (data: BandChartPoint, codec: *WidgetBandChartPointCodec) -> HostValue {
-    value := HostRecordValue("BandChartPoint", codec.fields[:])
+    value := HostRecordValue("band_chart_props.BandChartPoint", codec.fields[:])
     codec.fields[0] = HostField.{.name = HostTextData("slot"), .value = HostScalar("s32", cast(s64)data.slot)}
     codec.fields[1] = HostField.{.name = HostTextData("value"), .value = HostValue.{.kind = cast(s32)HostReal, .type_name = HostTextData("float32"), .real = cast(float64)data.value}}
     codec.fields[2] = HostField.{.name = HostTextData("good"), .value = HostScalar("s32", cast(s64)data.good)}
@@ -115,7 +121,7 @@ WidgetDecodeBandChartPoint :: (value: HostValue, codec: *WidgetBandChartPointCod
 }
 
 WidgetValidBandChartPoint :: (value: HostValue) -> bool {
-    if !HostRecordValid(*value, "BandChartPoint") { return false }
+    if !HostRecordValid(*value, "band_chart_props.BandChartPoint") { return false }
     if !HostFieldScalarValid(*value, 0, "slot", "s32", cast(s32)HostInteger) { return false }
     if !HostFieldScalarValid(*value, 1, "value", "float32", cast(s32)HostReal) { return false }
     if !HostFieldScalarValid(*value, 2, "good", "s32", cast(s32)HostInteger) { return false }
@@ -123,12 +129,15 @@ WidgetValidBandChartPoint :: (value: HostValue) -> bool {
     return true
 }
 
+WidgetTypeBandChartBand :: "band_chart_props.BandChartBand"
+WidgetSliceTypeBandChartBand :: "[]band_chart_props.BandChartBand"
+
 WidgetBandChartBandCodec :: struct {
     fields: [6]HostField
 }
 
 WidgetEncodeBandChartBand :: (data: BandChartBand, codec: *WidgetBandChartBandCodec) -> HostValue {
-    value := HostRecordValue("BandChartBand", codec.fields[:])
+    value := HostRecordValue("band_chart_props.BandChartBand", codec.fields[:])
     codec.fields[0] = HostField.{.name = HostTextData("from"), .value = HostScalar("s32", cast(s64)data.from)}
     codec.fields[1] = HostField.{.name = HostTextData("low"), .value = HostValue.{.kind = cast(s32)HostReal, .type_name = HostTextData("float32"), .real = cast(float64)data.low}}
     codec.fields[2] = HostField.{.name = HostTextData("high"), .value = HostValue.{.kind = cast(s32)HostReal, .type_name = HostTextData("float32"), .real = cast(float64)data.high}}
@@ -152,7 +161,7 @@ WidgetDecodeBandChartBand :: (value: HostValue, codec: *WidgetBandChartBandCodec
 }
 
 WidgetValidBandChartBand :: (value: HostValue) -> bool {
-    if !HostRecordValid(*value, "BandChartBand") { return false }
+    if !HostRecordValid(*value, "band_chart_props.BandChartBand") { return false }
     if !HostFieldScalarValid(*value, 0, "from", "s32", cast(s32)HostInteger) { return false }
     if !HostFieldScalarValid(*value, 1, "low", "float32", cast(s32)HostReal) { return false }
     if !HostFieldScalarValid(*value, 2, "high", "float32", cast(s32)HostReal) { return false }
@@ -162,12 +171,15 @@ WidgetValidBandChartBand :: (value: HostValue) -> bool {
     return true
 }
 
+WidgetTypeBandChartResult :: "band_chart_props.BandChartResult"
+WidgetSliceTypeBandChartResult :: "[]band_chart_props.BandChartResult"
+
 WidgetBandChartResultCodec :: struct {
     fields: [1]HostField
 }
 
 WidgetEncodeBandChartResult :: (data: BandChartResult, codec: *WidgetBandChartResultCodec) -> HostValue {
-    value := HostRecordValue("BandChartResult", codec.fields[:])
+    value := HostRecordValue("band_chart_props.BandChartResult", codec.fields[:])
     codec.fields[0] = HostField.{.name = HostTextData("shown"), .value = HostScalar("s32", cast(s64)data.shown)}
     return value
 }
@@ -181,7 +193,7 @@ WidgetDecodeBandChartResult :: (value: HostValue, codec: *WidgetBandChartResultC
 }
 
 WidgetValidBandChartResult :: (value: HostValue) -> bool {
-    if !HostRecordValid(*value, "BandChartResult") { return false }
+    if !HostRecordValid(*value, "band_chart_props.BandChartResult") { return false }
     if !HostFieldScalarValid(*value, 0, "shown", "s32", cast(s32)HostInteger) { return false }
     return true
 }
