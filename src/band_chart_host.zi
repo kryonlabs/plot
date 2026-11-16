@@ -51,12 +51,12 @@ BandChartHostCall :: (session: Session, module: *u8, function: *u8,
     }
     points := arguments[2]
     bands := arguments[3]
-    if points.kind != cast(s32)HostSlice || TextFromCString(points.type_name) != "[]BandChartPoint" ||
+    if points.kind != cast(s32)HostSlice || !HostTypeValid(points.type_name, WidgetSliceTypeBandChartPoint) ||
     points.length > cast(usize)BAND_CHART_HOST_LIMIT ||
     (points.length > cast(usize)0 && points.elements == null) {
         return 0
     }
-    if bands.kind != cast(s32)HostSlice || TextFromCString(bands.type_name) != "[]BandChartBand" ||
+    if bands.kind != cast(s32)HostSlice || !HostTypeValid(bands.type_name, WidgetSliceTypeBandChartBand) ||
     bands.length > cast(usize)BAND_CHART_HOST_LIMIT ||
     (bands.length > cast(usize)0 && bands.elements == null) {
         return 0

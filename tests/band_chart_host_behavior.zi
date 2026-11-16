@@ -63,15 +63,29 @@ main :: () -> s32 {
             .good_color = Color.{0, 128, 0, 255}, .band_color = Color.{0, 128, 0, 40},
             .grid_color = Color.{0, 0, 0, 64}, .text_color = Color.{0, 0, 0, 255}},
         *props_codec)
-    arguments[2] = HostValue.{.kind = cast(s32)HostSlice, .type_name = HostTextData("[]BandChartPoint"),
+    arguments[2] = HostValue.{.kind = cast(s32)HostSlice, .type_name = HostTextData(WidgetSliceTypeBandChartPoint),
         .length = cast(usize)30, .elements = *point_values[0]}
-    arguments[3] = HostValue.{.kind = cast(s32)HostSlice, .type_name = HostTextData("[]BandChartBand"),
+    arguments[3] = HostValue.{.kind = cast(s32)HostSlice, .type_name = HostTextData(WidgetSliceTypeBandChartBand),
         .length = cast(usize)1, .elements = *band_values[0]}
     result: HostValue
     before := PendingPaintCount(session)
     if Call(session, "plot_band_chart", "BandChartHostedHost", arguments[:], *result) != 1 ||
     !WidgetValidBandChartResult(result) || PendingPaintCount(session) <= before + 30 {
         return 2
+    }
+    // A consumer bundle qualifies every record and slice with Plot's package
+    // identity. Exercise the real host and chart painter with that wire shape.
+    arguments[1].type_name = HostTextData("pcb5258445244d90c_band_chart_props.BandChartProps")
+    arguments[2].type_name = HostTextData("[]pcb5258445244d90c_band_chart_props.BandChartPoint")
+    arguments[3].type_name = HostTextData("[]pcb5258445244d90c_band_chart_props.BandChartBand")
+    for index: cast(s32)0..29 {
+        point_values[index].type_name = HostTextData("pcb5258445244d90c_band_chart_props.BandChartPoint")
+    }
+    band_values[0].type_name = HostTextData("pcb5258445244d90c_band_chart_props.BandChartBand")
+    before = PendingPaintCount(session)
+    if Call(session, "pcb5258445244d90c_band_chart", "BandChartHostedHost", arguments[:], *result) != 1 ||
+    !WidgetValidBandChartResult(result) || PendingPaintCount(session) <= before + 30 {
+        return 7
     }
     // Another session, another module and too many points are refused.
     other := SessionOpen()
@@ -86,9 +100,33 @@ main :: () -> s32 {
         return 5
     }
     arguments[2].length = cast(usize)30
-    arguments[3].type_name = HostTextData("[]BandChartPoint")
+    arguments[3].type_name = HostTextData(WidgetSliceTypeBandChartPoint)
     if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
         return 6
+    }
+    arguments[3].type_name = HostTextData(WidgetSliceTypeBandChartBand)
+    arguments[2].type_name = HostTextData("[]pcb5258445244d90c_other_props.BandChartPoint")
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 8
+    }
+    arguments[2].type_name = null
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 9
+    }
+    arguments[2].type_name = HostTextData(WidgetSliceTypeBandChartPoint)
+    arguments[2].elements = null
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 10
+    }
+    arguments[2].elements = *point_values[0]
+    arguments[3].length = cast(usize)367
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 11
+    }
+    arguments[3].length = cast(usize)1
+    arguments[3].elements = null
+    if Call(session, "band_chart", "BandChartHostedHost", arguments[:], *result) != 0 {
+        return 12
     }
     return 0
 }
