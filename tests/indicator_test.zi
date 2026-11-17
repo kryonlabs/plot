@@ -51,5 +51,20 @@ main :: () -> s32 {
     if CandleMarkerX(single[:], 1, bounds, 1001) != -1.0 { return 15 }
     after_last: s64 = bars[4].timestamp + 86400
     if CandleMarkerX(values, 3, bounds, after_last) != -1.0 { return 16 }
+    log_range: CandleRange
+    log_range.min_value = 10.0; log_range.max_value = 1000.0
+    log_range.logarithmic = true
+    middle := CandleY(100.0, bounds, log_range)
+    if middle < 49.99 || middle > 50.01 { return 17 }
+    inverse := CandlePriceAtY(middle, bounds, log_range)
+    if inverse < 99.99 || inverse > 100.01 { return 18 }
+    if CandleY(0.0, bounds, log_range) != -1.0 { return 19 }
+    padded := CandleRangeFor(micro[:], 2, true)
+    if padded.min_value <= 0.0 || padded.min_value >= padded.low ||
+        padded.max_value <= padded.high { return 20 }
+    if CandleWindowEnd(values, bars[2].timestamp) != 3 { return 21 }
+    if CandlePanEnd(5, -20, 5, 3) != 3 { return 22 }
+    if CandlePanEnd(3, 20, 5, 3) != 5 { return 23 }
+    if CandlePanStepsFor(100.0, 200.0, bounds, 3) != -1 { return 24 }
     return 0
 }

@@ -45,8 +45,8 @@ links or copied chart files are needed in a consuming package. Run
 `ziran update` to refresh every dependency in a project, or
 `ziran update kryon` in this package to refresh only Kryon.
 
-ATR currently uses source links while its older project layout is migrated
-to a Ziran package manifest. Other packages can use the dependency directly.
+ATR consumes Plot through its package manifest and canonical local overrides
+during integration. Other packages can use the dependency directly.
 Public module names use `UpperCamelCase` (`Kryon`, `PlotWidget`, `Plot`).
 Lowercase names such as `plot_widget` are implementation modules; the
 lowercase `plot` export remains available for existing consumers.
@@ -62,3 +62,13 @@ allows it where `BandChartHostSupports(module, function)` says so. The
 records are in `band_chart_props`, and `scripts/generate-codec.py` generates
 their codec on top of Kryon's widget codec. A chart takes at most 366 points
 and 366 bands.
+
+`CandleRangeFor(bars, visible_count, logarithmic = false)` supports a positive
+logarithmic price domain while keeping linear callers compatible. Range fields
+remain actual prices. `CandlePadRange` recomputes padding after caller-owned
+level expansion. `CandleY` and `CandlePriceAtY` are matching forward/inverse
+transforms for candle bodies, wicks, averages, levels, price ticks and tooltips.
+Invalid/nonpositive prices are not painted on a logarithmic chart.
+`CandleWindowEnd(bars, timestamp)` resolves a stable retained right edge (zero
+follows latest); `CandlePanStepsFor` and `CandlePanEnd` support caller-owned drag
+windows. Chart libraries do not fetch markets or change application selection.

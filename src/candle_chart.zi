@@ -4,6 +4,7 @@ ButtonWidget :: #import "kryon/button";
 #import "kryon/paint_queue"
 #import "kryon/session"
 using PlotWidget :: #import "PlotWidget";
+ChartMath :: #import "std/math";
 
 PriceBar :: struct {
     timestamp: s64
@@ -20,6 +21,7 @@ CandleRange :: struct {
     min_value: float32
     max_value: float32
     max_volume: float32
+    logarithmic: bool
 }
 
 CandleChartProps :: struct {
@@ -79,14 +81,18 @@ CandleIndexAtX :: (x: float32, bounds: Rectangle,
 }
 
 #program_export
-CandleRangeFor :: (bars: []PriceBar, visible_count: s32) -> CandleRange {
+CandleRangeFor :: (bars: []PriceBar, visible_count: s32,
+    logarithmic: bool = false) -> CandleRange {
     result: CandleRange
+    result.logarithmic = logarithmic
     if bars.count == 0 { return result }
     start: s32 = CandleVisibleStart(cast(s32)bars.count, visible_count)
-    result.low = bars[start].low
-    result.high = bars[start].high
     index: s32 = start
     while index < cast(s32)bars.count {
+        if !CandleValidPrice(bars[index].low) ||
+            !CandleValidPrice(bars[index].high) ||
+            bars[index].high < bars[index].low { index += 1; continue }
+        if result.low == 0.0 { result.low = bars[index].low }
         if bars[index].low < result.low { result.low = bars[index].low }
         if bars[index].high > result.high { result.high = bars[index].high }
         if bars[index].volume > result.max_volume {
@@ -94,19 +100,41 @@ CandleRangeFor :: (bars: []PriceBar, visible_count: s32) -> CandleRange {
         }
         index += 1
     }
-    spread: float32 = result.high - result.low
+    CandlePadRange(*result)
+    return result
+}
+
+#program_export
+CandleValidPrice :: (value: float32) -> bool {
+    return value > 0.0 && ChartMath.Finite64(cast(float64)value)
+}
+
+// Range endpoints remain actual prices. Every painter and inverse operation
+// uses the same domain; callers may expand endpoints before padding again.
+#program_export
+CandlePadRange :: (range: *CandleRange) {
+    if !CandleValidPrice(range.low) || !CandleValidPrice(range.high) { return }
+    if range.logarithmic {
+        low := ChartMath.Log(cast(float64)range.low)
+        high := ChartMath.Log(cast(float64)range.high)
+        spread := high - low
+        if spread <= 0.0 { spread = 0.001 }
+        range.min_value = cast(float32)ChartMath.Exp(low - spread * 0.05)
+        range.max_value = cast(float32)ChartMath.Exp(high + spread * 0.05)
+        return
+    }
+    spread: float32 = range.high - range.low
     // Do not impose a unit-sized range: it makes low-priced instruments look
     // flat. A truly flat series receives small proportional breathing room.
     if spread <= 0.0 {
-        scale: float32 = result.high
+        scale: float32 = range.high
         if scale < 0.0 { scale = -scale }
         if scale < 0.000001 { scale = 0.000001 }
         spread = scale * 0.001
     }
     padding: float32 = spread * 0.05
-    result.min_value = result.low - padding
-    result.max_value = result.high + padding
-    return result
+    range.min_value = range.low - padding
+    range.max_value = range.high + padding
 }
 
 #program_export
@@ -122,7 +150,19 @@ CandleVolumeBounds :: (bounds: Rectangle) -> Rectangle {
         bounds.width, bounds.height * 0.18}
 }
 
+#program_export
 CandleY :: (value: float32, bounds: Rectangle, range: CandleRange) -> float32 {
+    if range.logarithmic {
+        if !CandleValidPrice(value) || !CandleValidPrice(range.min_value) ||
+            !CandleValidPrice(range.max_value) { return -1.0 }
+        low := ChartMath.Log(cast(float64)range.min_value)
+        high := ChartMath.Log(cast(float64)range.max_value)
+        if high <= low { return bounds.y + bounds.height / 2.0 }
+        fraction := (high - ChartMath.Log(cast(float64)value)) / (high - low)
+        if fraction < 0.0 { fraction = 0.0 }
+        if fraction > 1.0 { fraction = 1.0 }
+        return bounds.y + cast(float32)fraction * bounds.height
+    }
     span: float32 = range.max_value - range.min_value
     if span <= 0.0 { return bounds.y + bounds.height / 2.0 }
     fraction: float32 = (range.max_value - value) / span
@@ -132,12 +172,50 @@ CandleY :: (value: float32, bounds: Rectangle, range: CandleRange) -> float32 {
 }
 
 #program_export
+CandlePriceAtY :: (y: float32, bounds: Rectangle,
+    range: CandleRange) -> float32 {
+    if bounds.height <= 0.0 { return 0.0 }
+    fraction := (y - bounds.y) / bounds.height
+    if fraction < 0.0 { fraction = 0.0 }
+    if fraction > 1.0 { fraction = 1.0 }
+    if range.logarithmic {
+        if !CandleValidPrice(range.min_value) ||
+            !CandleValidPrice(range.max_value) { return 0.0 }
+        low := ChartMath.Log(cast(float64)range.min_value)
+        high := ChartMath.Log(cast(float64)range.max_value)
+        return cast(float32)ChartMath.Exp(high - cast(float64)fraction * (high - low))
+    }
+    return range.max_value - fraction * (range.max_value - range.min_value)
+}
+
+// Zero means follow the latest candle; otherwise the timestamp is a stable
+// right edge even when a refresh inserts earlier or later records.
+#program_export
+CandleWindowEnd :: (bars: []PriceBar, timestamp: s64) -> s32 {
+    end := cast(s32)bars.count
+    if timestamp <= 0 { return end }
+    while end > 0 && bars[end - 1].timestamp > timestamp { end -= 1 }
+    return end
+}
+
+#program_export
+CandlePanEnd :: (end: s32, steps: s32, count: s32, visible: s32) -> s32 {
+    result := end + steps
+    minimum := visible
+    if minimum > count { minimum = count }
+    if result < minimum { result = minimum }
+    if result > count { result = count }
+    return result
+}
+
+#program_export
 SMAAt :: (bars: []PriceBar, index: s32, period: s32) -> float32 {
     if period <= 0 || index < period - 1 ||
         index >= cast(s32)bars.count { return 0.0 }
     total: float32 = 0.0
     cursor: s32 = index - period + 1
     while cursor <= index {
+        if !CandleValidPrice(bars[cursor].close) { return 0.0 }
         total += bars[cursor].close
         cursor += 1
     }
@@ -152,6 +230,7 @@ EMAAt :: (bars: []PriceBar, index: s32, period: s32) -> float32 {
     alpha: float32 = 2.0 / cast(float32)(period + 1)
     cursor: s32 = period
     while cursor <= index {
+        if !CandleValidPrice(bars[cursor].close) { return 0.0 }
         value = alpha * bars[cursor].close + (1.0 - alpha) * value
         cursor += 1
     }
@@ -174,7 +253,7 @@ DrawAverage :: (session: Session, props: CandleChartProps,
     while index < cast(s32)bars.count {
         value: float32 = SMAAt(bars, index, period)
         if exponential { value = EMAAt(bars, index, period) }
-        if value > 0.0 {
+        if CandleValidPrice(value) {
             x: float32 = price.x +
                 (cast(float32)(index - start) + 0.5) * step
             y: float32 = CandleY(value, price, range)
@@ -186,7 +265,7 @@ DrawAverage :: (session: Session, props: CandleChartProps,
             previous_x = x
             previous_y = y
             previous = true
-        }
+        } else { previous = false }
         index += 1
     }
 }
@@ -227,6 +306,11 @@ CandleChart :: (session: Session, props: CandleChartProps,
     index: s32 = start
     while index < cast(s32)bars.count {
         bar: PriceBar = bars[index]
+        if !CandleValidPrice(bar.open) || !CandleValidPrice(bar.close) ||
+            !CandleValidPrice(bar.high) || !CandleValidPrice(bar.low) {
+            index += 1
+            continue
+        }
         x: float32 = price.x +
             (cast(float32)(index - start) + 0.5) * step
         color: Color = props.up_color
@@ -314,7 +398,7 @@ CandlePriceLevels :: (session: Session, props: CandleChartProps,
     index: s32 = 0
     while index < cast(s32)levels.count {
         value: float32 = levels[index].value
-        if value == value && value >= range.min_value &&
+        if CandleValidPrice(value) && value >= range.min_value &&
             value <= range.max_value {
             y: float32 = CandleY(value, price, range)
             PaintLine(session, -1,
