@@ -6,6 +6,7 @@ TestSession :: () -> Session {
 }
 
 #import "kryon/geometry"
+#import "kryon/drawing_props"
 #import "kryon/paint_queue"
 #import "plot"
 #import "plot_props"
@@ -133,6 +134,7 @@ BandChecks :: () -> s32 {
 
 #program_export
 main :: () -> s32 {
+    if ThemeChecks() != 0 { return 20 }
     band := BandChecks()
     if band != 0 { return band }
     index: s32 = 0
@@ -146,4 +148,32 @@ main :: () -> s32 {
         index += 1
     }
     return CompareLines()
+}
+
+ThemeToken :: (name: string, color: u32) -> bool {
+    bytes: [16]u8
+    for index: 0..cast(s32)name.count - 1 { bytes[index] = name[index] }
+    return SetStyleTokenColorBytes(bytes[0:name.count], color)
+}
+ThemeChecks :: () -> s32 {
+    saved := CaptureStyleTokenColors()
+    defer { unused RestoreStyleTokenColors(saved) }
+    ClearStyleTokenColors()
+    fallback := DefaultPlotFaces()
+    if fallback.plot.value.background != cast(u32)0xf5f5f5ff { return 1 }
+    unused ThemeToken("surface", cast(u32)0xe8dccaff)
+    unused ThemeToken("text", cast(u32)0x302820ff)
+    unused ThemeToken("border", cast(u32)0xd0b898ff)
+    unused ThemeToken("accent", cast(u32)0x704020ff)
+    light := PlotFacesFor(PlotProps.{}, DefaultPlotFaces())
+    if light.plot.value.background != cast(u32)0xe8dccaff ||
+        light.plot.value.foreground != cast(u32)0x302820ff ||
+        light.plot.value.border != cast(u32)0xd0b898ff ||
+        light.mark.value.background != cast(u32)0x704020ff { return 2 }
+    unused ThemeToken("surface", cast(u32)0x17212bff)
+    unused ThemeToken("text", cast(u32)0xf1f5f9ff)
+    dark := PlotFacesFor(PlotProps.{}, DefaultPlotFaces())
+    if dark.plot.value.background != cast(u32)0x17212bff ||
+        dark.plot.value.foreground != cast(u32)0xf1f5f9ff { return 3 }
+    return 0
 }

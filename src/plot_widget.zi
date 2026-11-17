@@ -25,6 +25,13 @@ PlotFaces :: struct {
     mark: StyleFrame
 }
 
+PlotThemeColor :: (name: string, fallback: u32) -> u32 {
+    color := StyleTokenColorOr(name, ColorFromPacked(fallback))
+    return (cast(u32)color.r << cast(u32)24) |
+        (cast(u32)color.g << cast(u32)16) |
+        (cast(u32)color.b << cast(u32)8) | cast(u32)color.a
+}
+
 #program_export
 DefaultPlotFaces :: () -> PlotFaces {
     faces: PlotFaces
@@ -33,9 +40,9 @@ DefaultPlotFaces :: () -> PlotFaces {
         cast(u32)StyleBorderWidth | cast(u32)StyleRadius |
         cast(u32)StyleFontSize | cast(u32)StylePaddingX |
         cast(u32)StylePaddingY | cast(u32)StyleOpacity
-    faces.plot.value.background = cast(u32)0xf5f5f5ff
-    faces.plot.value.foreground = cast(u32)0x171717ff
-    faces.plot.value.border = cast(u32)0x737373ff
+    faces.plot.value.background = PlotThemeColor("surface", cast(u32)0xf5f5f5ff)
+    faces.plot.value.foreground = PlotThemeColor("text", cast(u32)0x171717ff)
+    faces.plot.value.border = PlotThemeColor("border", cast(u32)0x737373ff)
     faces.plot.value.border_width = 1.0
     faces.plot.value.radius = 4.0
     faces.plot.value.font_size = 14.0
@@ -44,7 +51,7 @@ DefaultPlotFaces :: () -> PlotFaces {
     faces.plot.value.opacity = 1.0
     faces.mark.value.fields = cast(u32)StyleBackground |
         cast(u32)StyleOpacity
-    faces.mark.value.background = cast(u32)0x3b609bff
+    faces.mark.value.background = PlotThemeColor("accent", cast(u32)0x3b609bff)
     faces.mark.value.opacity = 1.0
     return faces
 }
