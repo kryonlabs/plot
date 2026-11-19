@@ -27,7 +27,7 @@ charts and Kryon's public UI surface; app code can use
 To add Plot to another Ziran project, run:
 
 ```sh
-ziran add https://github.com/kryonlabs/plot.git
+ziran add https://git.waozi.xyz/kryonlabs/plot.git
 ```
 
 Then import its public module, or only the chart surface:
@@ -50,6 +50,30 @@ during integration. Other packages can use the dependency directly.
 Public module names use `UpperCamelCase` (`Kryon`, `PlotWidget`, `Plot`).
 Lowercase names such as `plot_widget` are implementation modules; the
 lowercase `plot` export remains available for existing consumers.
+
+## High-precision candlesticks
+
+For OHLCV data stored as `float64`, pass the visible `[]PriceBar64` and a
+caller-owned `[]PriceBar` of the same length or longer to `CandleProject`.
+The function offsets and scales prices in `float64` before storing them in
+the `[1, 2]` domain used by the renderer. It also normalizes volume. Pass
+the projected bars and `projection.range` to `CandleChart`. Input must have
+finite, ordered OHLC values and finite, nonnegative volumes. A zero `span`
+indicates empty input, insufficient output space, or an unrepresentable
+domain. Flat input receives a small centered display span.
+
+Use `CandleProjectedPrice(projection, tick)` to recover a `float64` price
+for an axis label. For example, `CandleProjectedPrice(projection, 1.5)` gives
+the midpoint price and `CandleY(1.5, price_bounds, projection.range)` gives
+its position. Use the original bars for detailed captions.
+
+`CandleViewportFor(bars, right_edge, selected, visible)` resolves ascending
+timestamps into the half-open window `[first, end)`. A zero `right_edge`
+follows the latest bar. `selected` is a timestamp on input and an absolute
+bar index on output. The window retains the selected bar when visible and
+otherwise selects the rightmost visible bar. An empty window has selection
+`-1`. Use `CandlePanEnd` to move the window and `CandleCenterX` and
+`CandleIndexAtX` to map between visible slots and plot coordinates.
 
 ## Band charts in portable bundles
 

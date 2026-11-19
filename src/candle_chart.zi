@@ -15,6 +15,15 @@ PriceBar :: struct {
     volume: float32
 }
 
+PriceBar64 :: struct {
+    timestamp: s64
+    open: float64
+    high: float64
+    low: float64
+    close: float64
+    volume: float64
+}
+
 CandleRange :: struct {
     low: float32
     high: float32
@@ -22,6 +31,21 @@ CandleRange :: struct {
     max_value: float32
     max_volume: float32
     logarithmic: bool
+}
+
+CandleProjection :: struct {
+    low: float64
+    high: float64
+    span: float64
+    max_volume: float64
+    range: CandleRange
+}
+
+CandleViewport :: struct {
+    first: s32
+    end: s32
+    selected: s32
+    right_edge: s64
 }
 
 CandleChartProps :: struct {
@@ -78,6 +102,62 @@ CandleIndexAtX :: (x: float32, bounds: Rectangle,
         x < bounds.x || x >= bounds.x + bounds.width { return -1 }
     return cast(s32)((x - bounds.x) *
         cast(float32)visible_count / bounds.width)
+}
+
+// The center of a zero-based visible slot, or -1 for an invalid slot or width.
+#program_export
+CandleCenterX :: (index: s32, bounds: Rectangle,
+    visible_count: s32) -> float32 {
+    if index < 0 || index >= visible_count || bounds.width <= 0.0 { return -1.0 }
+    step: float32 = bounds.width / cast(float32)visible_count
+    return bounds.x + (cast(float32)index + 0.5) * step
+}
+
+// Project the caller's visible bars into the linear [1, 2] price domain.
+// Input prices and volumes are finite and each bar has ordered OHLC values.
+// An empty input, short output or unusable domain returns span zero.
+#program_export
+CandleProject :: (bars: []PriceBar64, output: []PriceBar) -> CandleProjection {
+    if bars.count == 0 || output.count < bars.count { return .{} }
+    low: float64 = bars[0].low
+    high: float64 = bars[0].high
+    max_volume: float64 = 0.0
+    for bars {
+        if it.low < low { low = it.low }
+        if it.high > high { high = it.high }
+        if it.volume > max_volume { max_volume = it.volume }
+    }
+    span: float64 = high - low
+    if span == 0.0 {
+        // Match the flat price buffer on either side of the original value.
+        scale: float64 = low
+        if scale < 0.0 { scale = -scale }
+        span = scale * 0.002
+        if span / 2.0 == 0.0 { span = 0.000000002 }
+        low -= span / 2.0
+        high = low + span
+    }
+    if !(span > 0.0) || !ChartMath.Finite64(low) ||
+        !ChartMath.Finite64(high) || !ChartMath.Finite64(span) { return .{} }
+
+    for index: 0..bars.count - 1 {
+        bar := bars[index]
+        output[index] = .{.timestamp = bar.timestamp,
+            .open = cast(float32)(1.0 + (bar.open - low) / span),
+            .high = cast(float32)(1.0 + (bar.high - low) / span),
+            .low = cast(float32)(1.0 + (bar.low - low) / span),
+            .close = cast(float32)(1.0 + (bar.close - low) / span),
+            .volume = ifx max_volume > 0.0 then cast(float32)(bar.volume / max_volume) else 0.0}
+    }
+    return .{.low = low, .high = high, .span = span, .max_volume = max_volume,
+        .range = .{.low = 1.0, .high = 2.0, .min_value = 0.975,
+            .max_value = 2.025, .max_volume = ifx max_volume > 0.0 then 1.0 else 0.0}}
+}
+
+// Recover a price from a normalized value, including the chart's padded ticks.
+#program_export
+CandleProjectedPrice :: (projection: CandleProjection, value: float64) -> float64 {
+    return projection.low + (value - 1.0) * projection.span
 }
 
 #program_export
@@ -200,12 +280,38 @@ CandleWindowEnd :: (bars: []PriceBar, timestamp: s64) -> s32 {
 
 #program_export
 CandlePanEnd :: (end: s32, steps: s32, count: s32, visible: s32) -> s32 {
-    result := end + steps
+    if count <= 0 { return 0 }
+    result: s64 = cast(s64)end + cast(s64)steps
     minimum := visible
+    if minimum < 0 { minimum = 0 }
     if minimum > count { minimum = count }
-    if result < minimum { result = minimum }
-    if result > count { result = count }
-    return result
+    if result < minimum { return minimum }
+    if result > count { return count }
+    return cast(s32)result
+}
+
+// Resolve ascending timestamps to a bounded window and an absolute selection.
+// A zero right edge follows the latest data. Missing selection uses the last
+// visible candle; an empty input has no selection and returns -1.
+#program_export
+CandleViewportFor :: (bars: []PriceBar64, right_edge: s64,
+    selected: s64, visible: s32) -> CandleViewport {
+    count: s32 = cast(s32)bars.count
+    if count == 0 { return .{.selected = -1} }
+    width := visible
+    if width <= 0 { width = 1 }
+    if width > count { width = count }
+    end := count
+    if right_edge > 0 {
+        while end > width && bars[end - 1].timestamp > right_edge { end -= 1 }
+    }
+    first := end - width
+    selection := end - 1
+    for index: first..end - 1 {
+        if bars[index].timestamp == selected { selection = index; break }
+    }
+    return .{.first = first, .end = end, .selected = selection,
+        .right_edge = ifx end == count then 0 else bars[end - 1].timestamp}
 }
 
 #program_export
@@ -245,7 +351,6 @@ DrawAverage :: (session: Session, props: CandleChartProps,
         props.visible_count)
     count: s32 = cast(s32)bars.count - start
     if count <= 0 { return }
-    step: float32 = price.width / cast(float32)count
     previous: bool = false
     previous_x: float32 = 0.0
     previous_y: float32 = 0.0
@@ -254,8 +359,7 @@ DrawAverage :: (session: Session, props: CandleChartProps,
         value: float32 = SMAAt(bars, index, period)
         if exponential { value = EMAAt(bars, index, period) }
         if CandleValidPrice(value) {
-            x: float32 = price.x +
-                (cast(float32)(index - start) + 0.5) * step
+            x: float32 = CandleCenterX(index - start, price, count)
             y: float32 = CandleY(value, price, range)
             if previous {
                 PaintLine(session, -1,
@@ -311,8 +415,7 @@ CandleChart :: (session: Session, props: CandleChartProps,
             index += 1
             continue
         }
-        x: float32 = price.x +
-            (cast(float32)(index - start) + 0.5) * step
+        x: float32 = CandleCenterX(index - start, price, count)
         color: Color = props.up_color
         if bar.close < bar.open { color = props.down_color }
         wick_high: float32 = CandleY(bar.high, price, range)
@@ -367,7 +470,7 @@ CandleMarkerX :: (bars: []PriceBar, visible_count: s32,
     count: s32 = cast(s32)bars.count - start
     if bars.count == 1 {
         if timestamp != bars[0].timestamp { return -1.0 }
-        return bounds.x + bounds.width / 2.0
+        return CandleCenterX(0, bounds, 1)
     }
     index: s32 = start
     while index < cast(s32)bars.count {
@@ -380,9 +483,7 @@ CandleMarkerX :: (bars: []PriceBar, visible_count: s32,
         }
         if timestamp >= bars[index].timestamp &&
             (next <= bars[index].timestamp || timestamp < next) {
-            return bounds.x +
-                (cast(float32)(index - start) + 0.5) *
-                bounds.width / cast(float32)count
+            return CandleCenterX(index - start, bounds, count)
         }
         index += 1
     }

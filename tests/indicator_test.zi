@@ -66,5 +66,69 @@ main :: () -> s32 {
     if CandlePanEnd(5, -20, 5, 3) != 3 { return 22 }
     if CandlePanEnd(3, 20, 5, 3) != 5 { return 23 }
     if CandlePanStepsFor(100.0, 200.0, bounds, 3) != -1 { return 24 }
+
+    precise: [3]PriceBar64 = .{
+        .{.timestamp = 10, .open = 100000000.125, .high = 100000000.375,
+            .low = 100000000.125, .close = 100000000.25, .volume = 2.0},
+        .{.timestamp = 20, .open = 100000000.375, .high = 100000000.375,
+            .low = 100000000.125, .close = 100000000.125, .volume = 8.0},
+        .{.timestamp = 30, .open = 100000000.25, .high = 100000000.25,
+            .low = 100000000.25, .close = 100000000.25}}
+    projected: [3]PriceBar
+    projection := CandleProject(precise[:], projected[:])
+    if cast(float32)precise[0].low != cast(float32)precise[0].high ||
+        projection.low != 100000000.125 || projection.high != 100000000.375 ||
+        projection.span != 0.25 || projected[0].low != 1.0 ||
+        projected[0].high != 2.0 || projected[0].close != 1.5 ||
+        projected[1].open <= projected[1].close { return 25 }
+    if projection.max_volume != 8.0 || projection.range.max_volume != 1.0 ||
+        projected[0].volume != 0.25 || projected[1].volume != 1.0 ||
+        projected[1].timestamp != 20 { return 26 }
+    if CandleProjectedPrice(projection, 1.0) != precise[0].low ||
+        CandleProjectedPrice(projection, 1.5) != precise[0].close ||
+        CandleProjectedPrice(projection, 2.0) != precise[0].high ||
+        CandleY(projected[0].high, bounds, projection.range) >=
+            CandleY(projected[0].low, bounds, projection.range) { return 27 }
+
+    flat := CandleProject(precise[2:3], projected[0:1])
+    if flat.span <= 0.0 || flat.low >= precise[2].low || flat.high <= precise[2].high ||
+        flat.range.max_volume != 0.0 || projected[0].volume != 0.0 ||
+        projected[0].open != 1.5 || projected[0].close != 1.5 ||
+        CandleProjectedPrice(flat, 1.5) != precise[2].close { return 28 }
+    zero: [1]PriceBar64
+    flat_zero := CandleProject(zero[:], projected[0:1])
+    if flat_zero.span <= 0.0 || projected[0].close != 1.5 ||
+        CandleProjectedPrice(flat_zero, 1.5) != 0.0 { return 29 }
+    if CandleProject(precise[0:0], projected[:]).span != 0.0 ||
+        CandleProject(precise[:], projected[0:1]).span != 0.0 ||
+        projected[0].close != 1.5 { return 30 }
+
+    latest := CandleViewportFor(precise[:], 0, 20, 2)
+    if latest.first != 1 || latest.end != 3 || latest.selected != 1 ||
+        latest.right_edge != 0 { return 31 }
+    clamped := CandleViewportFor(precise[:], 5, 30, 2)
+    if clamped.first != 0 || clamped.end != 2 || clamped.selected != 1 ||
+        clamped.right_edge != 20 { return 32 }
+    anchored := CandleViewportFor(precise[:], 25, 10, 2)
+    if anchored.first != 0 || anchored.end != 2 || anchored.selected != 0 ||
+        anchored.right_edge != 20 { return 33 }
+    expanded := CandleViewportFor(precise[:], 5, 10, 10)
+    if expanded.first != 0 || expanded.end != 3 || expanded.selected != 0 ||
+        expanded.right_edge != 0 { return 34 }
+    empty := CandleViewportFor(precise[0:0], 0, 0, 2)
+    if empty.first != 0 || empty.end != 0 || empty.selected != -1 ||
+        empty.right_edge != 0 { return 35 }
+    one := CandleViewportFor(precise[:], 0, 0, 0)
+    if one.first != 2 || one.end != 3 || one.selected != 2 { return 36 }
+    if CandlePanEnd(2, 2147483647, 3, 2) != 3 ||
+        CandlePanEnd(2, -2147483647, 3, 2) != 2 { return 37 }
+
+    slots: Rectangle = .{13.0, 2.0, 301.0, 99.0}
+    for slot: 0..16 {
+        index := cast(s32)slot
+        if CandleIndexAtX(CandleCenterX(index, slots, 17), slots, 17) != index { return 38 }
+    }
+    if CandleCenterX(-1, slots, 17) != -1.0 || CandleCenterX(17, slots, 17) != -1.0 ||
+        CandleCenterX(0, slots, 0) != -1.0 || CandleIndexAtX(314.0, slots, 17) != -1 { return 39 }
     return 0
 }
