@@ -6,11 +6,11 @@ bridge_modules = ["app"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "55b0176800d42c829db098a2ef8b0705ea339509"
+ref = "3a59682d869617e27b1fec5ff5990ee4e1a13cd1"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "8d5d2e752a219674f993473c8410847ba42fad48"
+ref = "d2e537cc9491a869f690ab32210e79fea0bc47ef"
 
 [exports]
 # Public module is Plot; the lowercase export is retained for older imports.
