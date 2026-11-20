@@ -1,0 +1,98 @@
+Charts :: #import "Plot";
+Motion :: #import "kryon/motion";
+Theme :: #import "kryon/theme";
+#import "kryon/drawing_props"
+#import "kryon/geometry"
+#import "kryon/paint_queue"
+#import "kryon/session"
+#import "kryon/tree"
+#import "kryon/widget_kind"
+#import "plot_widget_host"
+
+// Commit the retained chart and inspect its actual raster inputs. The fixed
+// scale maps 0..10 to y=110..10, so a 1-unit value change is 10 pixels.
+CheckFrame :: (session: Session, state: *Charts.AnimatedLineChartState,
+    values: []float32, now: float64, active: bool, first_y: float32, last_y: float32,
+    reduced: bool = false, duration: float64 = 2.0, middle_y: float32 = -1.0,
+    easing: Motion.Easing = .Linear) -> bool {
+    props := Charts.LineChartProps.{.key = 2, .bounds = Rectangle.{10.0, 10.0, 100.0, 100.0},
+        .semantic_label = "Animated visits", .line_color = ColorFromPacked(0x336699ff)}
+    scale := Charts.ChartRange.{.min_value = 0.0, .max_value = 10.0}
+    TreeStart(session, 1, Rectangle.{0.0, 0.0, 120.0, 120.0})
+    moving := Charts.AnimatedLineChart(session, props, values, scale, state, now,
+        duration, reduced, easing)
+    committed := TreeFinish(session)
+    node := TreeNodeAt(session, 1)
+    count := PendingPaintCount(session)
+    strokes: s32 = 0
+    if values.count == 1 { strokes = 1 }
+    if values.count > 1 { strokes = cast(s32)(2 * (values.count - 1)) }
+    base: s32 = 2 + 5
+    expected := ifx strokes == 0 then base else base + strokes + 1
+    ok := moving == active && committed && TreeCount(session) == 2 &&
+        node.kind == cast(s32)WidgetKind.WidgetKindPlot &&
+        node.semantic_label == "Animated visits" && count == expected
+    if strokes > 0 {
+        first := PendingPaintAt(session, base)
+        marker := PendingPaintAt(session, count - 1)
+        ok = ok && first.bounds.x == 10.0 && first.bounds.y == first_y &&
+            first.color.r == 0x33 && marker.bounds.x == 106.0 &&
+            marker.bounds.y == last_y - 4.0 && marker.color.r == 0x33
+        if middle_y >= 0.0 {
+            ok = ok && first.bounds.width == 50.0 &&
+                first.bounds.y + first.bounds.height == middle_y
+        }
+    }
+    PaintClear(session)
+    return ok
+}
+
+#program_export
+main :: () -> s32 {
+    session := SessionOpen()
+    if !SessionValid(session) || !Theme.InstallDefaultTheme(false) { return 1 }
+    scratch: [9]float32
+    state := Charts.AnimatedLineChartState.{.workspace = scratch[:]}
+    // Mutate the same input storage. Plot must own the previous target.
+    value: [2]float32 = .{2.0, 4.0}
+    if !CheckFrame(session, *state, value[:], 0.0, false, 90.0, 70.0) { return 2 }
+    value = .{6.0, 8.0}
+    if !CheckFrame(session, *state, value[:], 1.0, true, 90.0, 70.0) { return 3 }
+    if !CheckFrame(session, *state, value[:], 1.5, true, 80.0, 60.0) { return 4 }
+    value = .{0.0, 2.0}
+    // Retarget at a time between rendered frames. The old curve is now [4, 6].
+    if !CheckFrame(session, *state, value[:], 2.0, true, 70.0, 50.0) { return 5 }
+    longer: [3]float32 = .{6.0, 1.0, 10.0}
+    // At t=3 the interrupted curve is [2, 4]. Its new midpoint starts at 3.
+    if !CheckFrame(session, *state, longer[:], 3.0, true, 90.0, 70.0, false, 2.0, 80.0) { return 6 }
+    if !CheckFrame(session, *state, longer[:], 4.0, true, 70.0, 40.0, false, 2.0, 90.0) { return 7 }
+    if !CheckFrame(session, *state, longer[:], 5.0, false, 50.0, 10.0) { return 8 }
+    if !CheckFrame(session, *state, longer[:], 6.0, false, 50.0, 10.0) { return 9 }
+
+    one: [1]float32 = .{2.0}
+    // Shrinking to one point starts at the old line's rightmost value.
+    if !CheckFrame(session, *state, one[:], 7.0, true, 10.0, 10.0) { return 10 }
+    if !CheckFrame(session, *state, one[:], 8.0, false, 90.0, 90.0, true) { return 11 }
+    if !CheckFrame(session, *state, one[:], 8.5, false, 90.0, 90.0) { return 12 }
+    if !CheckFrame(session, *state, value[:], 9.0, true, 90.0, 90.0) { return 13 }
+    if !Theme.SetReducedMotion(true) { return 14 }
+    if !CheckFrame(session, *state, longer[:], 10.0, false, 50.0, 10.0) { return 15 }
+    if !Theme.SetReducedMotion(false) { return 16 }
+    if !CheckFrame(session, *state, longer[:], 11.0, false, 50.0, 10.0) { return 17 }
+    if !CheckFrame(session, *state, value[:], 12.0, false, 110.0, 90.0, false, 0.0) { return 18 }
+
+    // A target equal to the interrupted sample can stop on that very frame.
+    value = .{2.0, 4.0}
+    if !CheckFrame(session, *state, value[:], 13.0, true, 110.0, 90.0) { return 19 }
+    value = .{1.0, 3.0}
+    if !CheckFrame(session, *state, value[:], 14.0, false, 100.0, 80.0) { return 20 }
+    if !CheckFrame(session, *state, value[:], 14.5, false, 100.0, 80.0) { return 21 }
+
+    if !CheckFrame(session, *state, value[0:0], 15.0, false, 0.0, 0.0) { return 22 }
+    if !CheckFrame(session, *state, longer[:], 16.0, false, 50.0, 10.0) { return 23 }
+    too_long: [4]float32 = .{0.0, 2.0, 4.0, 6.0}
+    if !CheckFrame(session, *state, too_long[:], 17.0, false, 110.0, 50.0) { return 24 }
+    if !CheckFrame(session, *state, one[:], 18.0, false, 90.0, 90.0) { return 25 }
+    if !CheckFrame(session, null, longer[:], 19.0, false, 50.0, 10.0) { return 26 }
+    return 0
+}

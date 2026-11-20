@@ -17,7 +17,7 @@ changes on their next draw, and callers retain control of their series colors.
 
 Install the Ziran launcher once with `make install-user` in Ziran, then run
 `ziran fetch` and `make build` here. `make run` opens a small demo on the Cairo
-backend; `make check` checks the source and runs the nonvisual indicator test.
+backend. `make check` checks the source and runs the chart and indicator tests.
 The checked-in `ziran.lock` pins both Ziran and Kryon to exact commits. Plot
 exports `src/Plot/module.zi` for other packages, so `plot/Plot` resolves by
 its file both in projects and in builds that name `--module-path plot=DIR`.
@@ -51,6 +51,70 @@ during integration. Other packages can use the dependency directly.
 Public module names use `UpperCamelCase` (`Kryon`, `PlotWidget`, `Plot`).
 Lowercase names such as `plot_widget` are implementation modules; the
 lowercase `plot` export remains available for existing consumers.
+
+## Animated line charts
+
+`AnimatedLineChart` uses the same props and drawing as `LineChart` and takes
+one retained `AnimatedLineChartState` per chart. Give it a workspace of three
+`float32` values per point of capacity. Keep that workspace alive and exclusive
+to the state. Plot snapshots each target, so you can update or replace the input
+slice between calls. Keep the `ChartRange` fixed during motion so the axes stay
+in place. `ChartRangeForBoth` can set the scale for two known series.
+
+Call it with monotonic seconds each frame. It returns `true` while the host
+needs to schedule another frame. The first series appears immediately. A new
+target starts at the values sampled at the current time, including when it
+interrupts an animation. When the length changes, Plot samples the current line
+at the new evenly spaced x positions. A single point uses the right edge.
+Empty or over-capacity input draws directly and clears the transition. The
+next in-capacity series appears immediately. A null state also draws directly.
+
+The default duration is 0.25 seconds with ease-out, scaled by Kryon's theme
+motion multiplier. Pass the optional `duration`, `reduced_motion`, and
+`easing` arguments to control playback. A disabled theme, an explicit reduced
+motion preference, or a nonpositive duration settles immediately. The widget
+requires a Kryon revision that exports `kryon/motion`. `make check-animated-line`
+runs its native regression test without opening a window.
+
+```zi
+App :: #import "kryon/app";
+Button :: #import "kryon/button";
+Desktop :: #import "kryon/desktop_runtime";
+Charts :: #import "plot/Plot";
+#import "kryon/drawing_props"
+#import "kryon/frame_snapshot"
+#import "kryon/geometry"
+#import "kryon/session"
+
+previous: [3]float32 = .{2.0, 4.0, 3.0};
+current: [3]float32 = .{4.0, 3.0, 7.0};
+workspace: [9]float32;
+chart: Charts.AnimatedLineChartState;
+show_current: bool;
+
+Draw :: (frame: App.Frame) {
+    session := Session.{.slot = frame.slot, .epoch = frame.epoch}
+    if Button.Draw(session, Button.Props.{.key = 1, .label = "Switch week",
+        .bounds = Rectangle.{24.0, 20.0, 120.0, 36.0}}) != 0 {
+        show_current = !show_current
+    }
+    values := ifx show_current then current[:] else previous[:]
+    scale := Charts.ChartRangeForBoth(current[:], previous[:])
+    props := Charts.LineChartProps.{.key = 2,
+        .bounds = Rectangle.{24.0, 80.0, 352.0, 144.0},
+        .semantic_label = "Weekly visits", .line_color = ColorFromPacked(0x168265ff),
+        .grid_color = ColorFromPacked(0xb4bdc9ff)}
+    now := cast(float64)CaptureFrameInput(session).elapsed_ms / 1000.0
+    if Charts.AnimatedLineChart(session, props, values, scale, *chart, now) {
+        Desktop.DesktopRequestFrame()
+    }
+}
+
+main :: () -> s32 {
+    chart.workspace = workspace[:]
+    return App.Run(App.Window.{.title = "Weekly visits", .width = 400, .height = 248}, Draw)
+}
+```
 
 ## High-precision candlesticks
 

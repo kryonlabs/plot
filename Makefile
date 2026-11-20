@@ -4,7 +4,7 @@ ZIRAN ?= ziran
 CC ?= cc
 ZIRAN_INCLUDE := $(shell $(ZIRAN) pkg path ziran)/include
 
-.PHONY: run build check
+.PHONY: run build check check-animated-line
 
 run build:
 	$(ZIRAN) tool kryon $@
@@ -39,7 +39,16 @@ HOSTED_BINDS := \
 	--bind kryon/raster:RasterLine=$(HOSTED_HOST):RasterLine \
 	--bind kryon/paint_queue:RasterImage=$(HOSTED_HOST):RasterImage
 
-check:
+check-animated-line:
+	mkdir -p build/animated-line-chart-c
+	$(ZIRAN) build --project --target=c $(BINDS) \
+		--entry animated_line_chart_test:main -o build/animated-line-chart-c \
+		tests/animated_line_chart_test.zi
+	$(CC) -std=c11 -I$(ZIRAN_INCLUDE) -Ibuild/animated-line-chart-c \
+		build/animated-line-chart-c/*.c -lm -o build/animated-line-chart-test
+	build/animated-line-chart-test
+
+check: check-animated-line
 	$(ZIRAN) tool kryon check
 	$(ZIRAN) bundle --project $(BINDS) --entry plot_widget_behavior:main \
 		-o build/plot-widget.zx tests/plot_widget_behavior.zi

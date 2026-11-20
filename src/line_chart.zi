@@ -2,6 +2,8 @@
 #import "kryon/geometry"
 #import "kryon/paint_queue"
 #import "kryon/session"
+Motion :: #import "kryon/motion";
+Theme :: #import "kryon/theme";
 using PlotWidget :: #import "PlotWidget";
 
 ChartRange :: struct {
@@ -19,6 +21,14 @@ LineChartProps :: struct {
     grid_color: Color
     // The earlier series in LineChartCompare, such as last week.
     compare_color: Color
+}
+
+// Keep one state and 3 floats of workspace per supported point for each chart.
+// Set workspace once before the first draw. The other fields belong to Plot.
+AnimatedLineChartState :: struct {
+    workspace: []float32
+    count: s64
+    phase: Motion.TweenState
 }
 
 #program_export
@@ -82,8 +92,8 @@ LineChartFrame :: (session: Session, props: LineChartProps,
 #program_export
 LineChart :: (session: Session, props: LineChartProps,
     values: []float32, chart_range: ChartRange) {
-    if !LineChartFrame(session, props, chart_range) || values.count == 0 { return }
-    LineChartSeries(session, props.bounds, values, chart_range, props.line_color)
+    empty: []float32
+    LineChartCompare(session, props, values, empty, chart_range)
 }
 
 // Two series on one scale across the same width, such as this week over
@@ -99,6 +109,114 @@ LineChartCompare :: (session: Session, props: LineChartProps,
         LineChartSeries(session, props.bounds, values, chart_range, props.line_color)
     }
 }
+
+// Draw on the supplied scale and return true while another frame is needed.
+// Supply monotonic seconds. Input is borrowed for this call only.
+#program_export
+AnimatedLineChart :: (session: Session, props: LineChartProps,
+    values: []float32, chart_range: ChartRange, state: *AnimatedLineChartState,
+    now: float64, duration: float64 = 0.25, reduced_motion: bool = false,
+    easing: Motion.Easing = .EaseOut) -> bool {
+    sample := SampleLineChart(state, values, now, duration, reduced_motion, easing)
+    LineChart(session, props, sample.values, chart_range)
+    return sample.active
+}
+
+#scope_file
+
+LineChartSample :: struct {
+    values: []float32
+    active: bool
+}
+
+SampleLineChart :: (state: *AnimatedLineChartState, values: []float32,
+    now: float64, duration: float64, reduced_motion: bool,
+    easing: Motion.Easing) -> LineChartSample {
+    settled := LineChartSample.{values, false}
+    if state == null { return settled }
+    capacity := state.workspace.count / 3
+    if values.count == 0 || values.count > capacity {
+        state.count = 0
+        return settled
+    }
+
+    source := state.workspace[0:capacity]
+    target := state.workspace[capacity:2 * capacity]
+    display := state.workspace[2 * capacity:3 * capacity]
+    tokens := Theme.CurrentTheme().motion
+    seconds := duration * cast(float64)tokens.multiplier
+    linear: Motion.Timing
+    if state.count == 0 || reduced_motion || tokens.reduced_motion ||
+        !(seconds > 0.0 && seconds <= 1.7976931348623157e308) {
+        unused Motion.TweenTo(*state.phase, 1.0, now, seconds, linear, true)
+        RememberLineTarget(state, target, values)
+        return settled
+    }
+
+    old_count := state.count
+    changed := values.count != old_count
+    if !changed {
+        for index: 0..old_count-1 {
+            if values[index] != target[index] {
+                changed = true
+                break
+            }
+        }
+    }
+
+    phase := Motion.TweenTo(*state.phase, 1.0, now, seconds, linear)
+    if !changed && !phase.active { return settled }
+    if phase.active {
+        for index: 0..old_count-1 {
+            display[index] = LineValueBetween(source[index], target[index], phase.value)
+        }
+    }
+    if !changed { return LineChartSample.{display[0:old_count], true} }
+
+    // Read the old curve before replacing its target. Sample at the new
+    // points' x positions so changing length keeps a continuous starting line.
+    current := target[0:old_count]
+    if phase.active { current = display[0:old_count] }
+    moving := false
+    for index: 0..values.count-1 {
+        source[index] = LineValueAt(current, index, values.count)
+        if source[index] != values[index] { moving = true }
+    }
+    RememberLineTarget(state, target, values)
+    if !moving {
+        unused Motion.TweenTo(*state.phase, 1.0, now, seconds, linear, true)
+        return settled
+    }
+
+    unused Motion.TweenTo(*state.phase, 0.0, now, seconds, linear, true)
+    unused Motion.TweenTo(*state.phase, 1.0, now, seconds, Motion.TimingFor(easing))
+    return LineChartSample.{source[0:values.count], true}
+}
+
+RememberLineTarget :: (state: *AnimatedLineChartState, target: []float32,
+    values: []float32) {
+    for index: 0..values.count-1 { target[index] = values[index] }
+    state.count = values.count
+}
+
+LineValueAt :: (values: []float32, index: s64, count: s64) -> float32 {
+    if values.count == count { return values[index] }
+    last := values.count - 1
+    if count == 1 || index == count - 1 { return values[last] }
+    position := cast(float64)index * cast(float64)last / cast(float64)(count - 1)
+    left := cast(s64)position
+    if left >= last { return values[last] }
+    return LineValueBetween(values[left], values[left + 1], cast(float32)(position - cast(float64)left))
+}
+
+LineValueBetween :: (from: float32, to: float32, phase: float32) -> float32 {
+    if phase == 0.0 { return from }
+    if phase == 1.0 { return to }
+    first := cast(float64)from
+    return cast(float32)(first + (cast(float64)to - first) * cast(float64)phase)
+}
+
+#scope_export
 
 // One series as a two-pixel line with a marker at its last value.
 LineChartSeries :: (session: Session, bounds: Rectangle, values: []float32,
