@@ -1,5 +1,6 @@
 using Charts :: #import "Plot";
 TextWidget :: #import "kryon/text";
+Theme :: #import "kryon/theme";
 #import "kryon/drawing_props"
 #import "kryon/geometry"
 #import "kryon/session"
@@ -43,7 +44,8 @@ Frame :: (session: Session, viewport: Rectangle) -> s32 {
     chart.semantic_label = "Example candlestick chart with volume and SMA 20"
     chart.up_color = ColorFromPacked(cast(u32)0x168265ff)
     chart.down_color = ColorFromPacked(cast(u32)0xb34d53ff)
-    chart.grid_color = ColorFromPacked(cast(u32)0xe3eaf0ff)
+    chart.grid_color = StyleTokenColorOr("grid",
+        ColorFromPacked(Theme.CurrentPalette().subtle_border))
     chart.sma20_color = ColorFromPacked(cast(u32)0xd18a1bff)
     chart.show_sma20 = true
     values: []PriceBar = bars[:]

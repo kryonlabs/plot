@@ -9,6 +9,7 @@
 #import "kryon/style"
 #import "kryon/style_sheet"
 #import "kryon/surface"
+Theme :: #import "kryon/theme";
 #import "kryon/tree"
 #import "kryon/widget_kind"
 
@@ -34,15 +35,16 @@ PlotThemeColor :: (name: string, fallback: u32) -> u32 {
 
 #program_export
 DefaultPlotFaces :: () -> PlotFaces {
+    palette := Theme.CurrentPalette()
     faces: PlotFaces
     faces.plot.value.fields = cast(u32)StyleBackground |
         cast(u32)StyleForeground | cast(u32)StyleBorder |
         cast(u32)StyleBorderWidth | cast(u32)StyleRadius |
         cast(u32)StyleFontSize | cast(u32)StylePaddingX |
         cast(u32)StylePaddingY | cast(u32)StyleOpacity
-    faces.plot.value.background = PlotThemeColor("surface", cast(u32)0xf5f5f5ff)
-    faces.plot.value.foreground = PlotThemeColor("text", cast(u32)0x171717ff)
-    faces.plot.value.border = PlotThemeColor("border", cast(u32)0x737373ff)
+    faces.plot.value.background = PlotThemeColor("surface", palette.surface)
+    faces.plot.value.foreground = PlotThemeColor("text", palette.foreground)
+    faces.plot.value.border = PlotThemeColor("border", palette.border)
     faces.plot.value.border_width = 1.0
     faces.plot.value.radius = 4.0
     faces.plot.value.font_size = 14.0
@@ -51,7 +53,7 @@ DefaultPlotFaces :: () -> PlotFaces {
     faces.plot.value.opacity = 1.0
     faces.mark.value.fields = cast(u32)StyleBackground |
         cast(u32)StyleOpacity
-    faces.mark.value.background = PlotThemeColor("accent", cast(u32)0x3b609bff)
+    faces.mark.value.background = PlotThemeColor("accent", palette.accent)
     faces.mark.value.opacity = 1.0
     return faces
 }

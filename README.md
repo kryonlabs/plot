@@ -9,10 +9,11 @@ has a simple line chart. Both accept
 caller-owned values and colors; market data, networking, price formatting,
 and time labels stay in the application.
 
-The shared plot surface, text, border and marks follow Kryon's current
-`surface`, `text`, `border` and `accent` style tokens on each draw. Installed
-style rules still override those defaults. Changing appearance updates an
-existing chart without recreating it; callers retain their series colors.
+The shared plot surface, text, border and marks use Kryon's active palette
+on each draw. The `surface`, `text`, `border` and `accent` style tokens can
+supply custom colors, including within a scoped widget palette. Installed
+style rules can also override the defaults. Existing charts pick up theme
+changes on their next draw, and callers retain control of their series colors.
 
 Install the Ziran launcher once with `make install-user` in Ziran, then run
 `ziran fetch` and `make build` here. `make run` opens a small demo on the Cairo

@@ -7,6 +7,24 @@ outlines: s32;
 lines: s32;
 labels: s32;
 failed: bool;
+expected_surface: u32;
+expected_border: u32;
+expected_text: u32;
+expected_mark: u32;
+
+#program_export
+ExpectPlotColors :: (surface: u32, border: u32, text: u32, mark: u32) {
+    expected_surface = surface
+    expected_border = border
+    expected_text = text
+    expected_mark = mark
+}
+
+ColorMatches :: (color: Color, packed: u32) -> bool {
+    expected := ColorFromPacked(packed)
+    return color.r == expected.r && color.g == expected.g &&
+        color.b == expected.b && color.a == expected.a
+}
 
 #program_export
 MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 {
@@ -22,8 +40,7 @@ RasterRoundedRectangle :: (bounds: Rectangle, radius: float32,
         bounds.x + bounds.width > 110.0 ||
         bounds.y + bounds.height > 150.0 { failed = true }
     if radius == 0.0 {
-        if color.r != cast(u8)59 || color.g != cast(u8)96 ||
-            color.b != cast(u8)155 || color.a != cast(u8)255 {
+        if !ColorMatches(color, expected_mark) {
             failed = true
         }
         which: s32 = marks % 3
@@ -35,9 +52,7 @@ RasterRoundedRectangle :: (bounds: Rectangle, radius: float32,
             bounds.y != 135.0 || bounds.height != 15.0) { failed = true }
         marks += 1
     } else {
-        if radius != 4.0 || color.r != cast(u8)245 ||
-            color.g != cast(u8)245 || color.b != cast(u8)245 ||
-            color.a != cast(u8)255 { failed = true }
+        if radius != 4.0 || !ColorMatches(color, expected_surface) { failed = true }
         backgrounds += 1
     }
 }
@@ -50,8 +65,7 @@ RasterRoundedRectangleOutline :: (bounds: Rectangle, radius: float32,
         bounds.height != 60.0 ||
         (bounds.y != 10.0 && bounds.y != 90.0) ||
         radius != 4.0 || width != 1.0 ||
-        color.r != cast(u8)115 || color.g != cast(u8)115 ||
-        color.b != cast(u8)115 || color.a != cast(u8)255 { failed = true }
+        !ColorMatches(color, expected_border) { failed = true }
     outlines += 1
 }
 
@@ -60,8 +74,7 @@ RasterLine :: (line: Rectangle, color: Color) {
     if line.x < 10.0 || line.x + line.width > 110.0 ||
         line.y < 10.0 || line.y > 70.0 ||
         line.y + line.height < 10.0 || line.y + line.height > 70.0 ||
-        color.r != cast(u8)59 || color.g != cast(u8)96 ||
-        color.b != cast(u8)155 || color.a != cast(u8)255 { failed = true }
+        !ColorMatches(color, expected_mark) { failed = true }
     lines += 1
 }
 
@@ -82,8 +95,7 @@ RasterTextClipped :: (value: string, x: s32, y: s32, font: s32,
     if value.count == 0 || x < 10 || x > 110 || y < 10 || y > 150 ||
         font != 14 || clip.x != 10.0 || clip.width != 100.0 ||
         (clip.y != 10.0 && clip.y != 90.0) || clip.height != 60.0 ||
-        color.r != cast(u8)23 || color.g != cast(u8)23 ||
-        color.b != cast(u8)23 || color.a != cast(u8)255 { failed = true }
+        !ColorMatches(color, expected_text) { failed = true }
     labels += 1
 }
 
