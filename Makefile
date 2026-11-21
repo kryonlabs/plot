@@ -4,7 +4,7 @@ ZIRAN ?= ziran
 CC ?= cc
 ZIRAN_INCLUDE := $(shell $(ZIRAN) pkg path ziran)/include
 
-.PHONY: run build check check-animated-line
+.PHONY: run build check check-animated-line check-dashboard dashboard-zx check-dashboard-ui
 
 run build:
 	$(ZIRAN) tool kryon $@
@@ -48,7 +48,7 @@ check-animated-line:
 		build/animated-line-chart-c/*.c -lm -o build/animated-line-chart-test
 	build/animated-line-chart-test
 
-check: check-animated-line
+check: check-animated-line check-dashboard
 	$(ZIRAN) tool kryon check
 	$(ZIRAN) bundle --project $(BINDS) --entry plot_widget_behavior:main \
 		-o build/plot-widget.zx tests/plot_widget_behavior.zi
@@ -82,3 +82,21 @@ check: check-animated-line
 		-Ibuild/indicator-test-c build/indicator-test-c/*.c -lm \
 		-o build/indicator-test
 	build/indicator-test
+
+check-dashboard:
+	mkdir -p build/dashboard-test-c
+	$(ZIRAN) build --project --target=c --entry dashboard_chart_test:main \
+		-o build/dashboard-test-c tests/dashboard_chart_test.zi
+	$(CC) -std=c99 -pedantic-errors -I$(ZIRAN_INCLUDE) -Ibuild/dashboard-test-c \
+		build/dashboard-test-c/*.c -lm -o build/dashboard-test
+	build/dashboard-test
+	$(ZIRAN) bundle --project --entry dashboard_chart_test:main \
+		-o build/dashboard-test.zx tests/dashboard_chart_test.zi
+	test "$$($(ZIRAN) run --project build/dashboard-test.zx)" = 0
+
+dashboard-zx:
+	$(ZIRAN) tool kryon build --profile portable
+
+check-dashboard-ui: dashboard-zx
+	$(ZIRAN) tool kryon build --profile cairo
+	python3 tests/dashboard_render_test.py $(ZIRAN)

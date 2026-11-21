@@ -1,0 +1,941 @@
+#import "kryon/drawing_props"
+#import "kryon/font_metrics"
+#import "kryon/tree_input"
+#import "kryon/geometry"
+#import "kryon/paint_queue"
+#import "kryon/session"
+#import "kryon/style_sheet"
+#import "kryon/tree"
+#import "plot_props"
+Candle :: #import "candle_chart";
+using Surface :: #import "plot_widget";
+using Theme :: #import "kryon/theme";
+using Number :: #import "std/number_text";
+using Dates :: #import "std/date_parse";
+using Finite :: #import "std/finite";
+
+ChartProps :: struct {
+    bounds: Rectangle
+    key: u64
+    label: string
+    x_unit: string
+    y_unit: string
+    date_x: bool
+    x_min: float64
+    x_max: float64
+    y_min: float64
+    y_max: float64
+    hide_legend: bool
+    hide_x_axis: bool
+    hide_tooltip: bool
+    horizontal: bool
+    link_hover: bool
+    hover_x: float64
+}
+
+XYMark :: enum { XYLine :: 0; XYStep :: 1; XYPoint :: 2 }
+using XYMark;
+
+XYPointValue :: struct { x: float64; y: float64; missing: bool }
+XYSeries :: struct { name: string; color: u32; mark: XYMark; points: []XYPointValue }
+ChartValue :: struct { value: float64; missing: bool }
+BarSeries :: struct { name: string; color: u32; values: []ChartValue }
+WaterfallStep :: struct { label: string; value: float64; total: bool; missing: bool }
+
+ChartHit :: struct {
+    active: bool
+    missing: bool
+    index: s64
+    series: s64
+    x: float64
+    y: float64
+}
+
+ChartDomain :: struct { low: float64; high: float64; valid: bool }
+XYDomains :: struct { x: ChartDomain; y: ChartDomain }
+
+#program_export
+ChartFormat :: (value: float64, unit: string = "") -> Text {
+    if !Finite.Finite64(value) { return TextCopy("No data") }
+    amount := value
+    magnitude := ifx value < 0.0 then -value else value
+    suffix := ""
+    exponent: s64 = 0
+    if magnitude >= 1.0e15 {
+        while magnitude >= 9.995 {
+            magnitude /= 10.0
+            amount /= 10.0
+            exponent += 1
+        }
+    } else if magnitude >= 999995000000.0 { amount /= 1.0e12; suffix = "T" }
+    else if magnitude >= 999995000.0 { amount /= 1.0e9; suffix = "B" }
+    else if magnitude >= 999995.0 { amount /= 1.0e6; suffix = "M" }
+    else if magnitude >= 1000.0 { amount /= 1.0e3; suffix = "k" }
+    digits: [32]u8
+    out := Vec(u8).{}
+    BuilderAppend(out, Number.FormatDecimal(amount, 2, digits[:]))
+    BuilderAppend(out, suffix)
+    if exponent > 0 { BuilderPrint(*out, "e%", exponent) }
+    if unit != "" && unit != "%" { BuilderAppend(out, " ") }
+    BuilderAppend(out, unit)
+    return BuilderFinish(out)
+}
+
+#program_export
+ChartDomainInclude :: (domain: *ChartDomain, value: float64) {
+    if !Finite.Finite64(value) { return }
+    if !domain.valid {
+        domain.* = ChartDomain.{value, value, true}
+        return
+    }
+    if value < domain.low { domain.low = value }
+    if value > domain.high { domain.high = value }
+}
+
+#program_export
+ChartDomainResolve :: (observed: ChartDomain, low: float64 = 0.0,
+    high: float64 = 0.0) -> ChartDomain {
+    if Finite.Finite64(low) && Finite.Finite64(high) && low < high {
+        return ChartDomain.{low, high, true}
+    }
+    if !observed.valid || observed.low < observed.high { return observed }
+    center := observed.low
+    padding := ifx center < 0.0 then -center * 0.02 else center * 0.02
+    if padding < 0.5 { padding = 0.5 }
+    first := center - padding
+    last := center + padding
+    if !Finite.Finite64(first) { first = center }
+    if !Finite.Finite64(last) { last = center }
+    return ChartDomain.{first, last, true}
+}
+
+XYValid :: (point: XYPointValue) -> bool {
+    return !point.missing && Finite.Finite64(point.x) && Finite.Finite64(point.y)
+}
+
+#program_export
+XYChartDomains :: (props: ChartProps, series: []XYSeries) -> XYDomains {
+    result: XYDomains
+    for item: series {
+        for point: item.points {
+            ChartDomainInclude(*result.x, point.x)
+            if XYValid(point) { ChartDomainInclude(*result.y, point.y) }
+        }
+    }
+    result.x = ChartResolveX(result.x, props)
+    result.y = ChartDomainResolve(result.y, props.y_min, props.y_max)
+    return result
+}
+
+ChartFraction :: (value: float64, domain: ChartDomain) -> float64 {
+    span := domain.high - domain.low
+    if Finite.Finite64(span) { return (value - domain.low) / span }
+    return (value * 0.5 - domain.low * 0.5) / (domain.high * 0.5 - domain.low * 0.5)
+}
+
+ChartCoordinate :: (domain: ChartDomain, fraction: float64) -> float64 {
+    return domain.low * (1.0 - fraction) + domain.high * fraction
+}
+
+#program_export
+ChartXPosition :: (bounds: Rectangle, domain: ChartDomain, value: float64) -> float32 {
+    return bounds.x + bounds.width * cast(float32)ChartFraction(value, domain)
+}
+
+ChartYPosition :: (bounds: Rectangle, domain: ChartDomain, value: float64) -> float32 {
+    return bounds.y + bounds.height * cast(float32)(1.0 - ChartFraction(value, domain))
+}
+
+ChartInDomain :: (value: float64, domain: ChartDomain) -> bool {
+    return domain.valid && value >= domain.low && value <= domain.high
+}
+
+ChartInside :: (bounds: Rectangle, x: float32, y: float32) -> bool {
+    return bounds.width > 0.0 && bounds.height > 0.0 && x >= bounds.x && y >= bounds.y &&
+        x <= bounds.x + bounds.width && y <= bounds.y + bounds.height
+}
+
+ChartNoHit :: () -> ChartHit { return ChartHit.{.index = -1, .series = -1} }
+
+#program_export
+XYChartHit :: (bounds: Rectangle, domains: XYDomains, series: []XYSeries,
+    x: float32, y: float32, linked: bool = false) -> ChartHit {
+    hit := ChartNoHit()
+    if !ChartInside(bounds, x, y) || !domains.x.valid || !domains.y.valid { return hit }
+    best_x: float32 = bounds.width + 1.0
+    best_y: float32 = bounds.height + 1.0
+    for i: 0..series.count-1 {
+        item := series[i]
+        for j: 0..item.points.count-1 {
+            point := item.points[j]
+            if !XYValid(point) || !ChartInDomain(point.x, domains.x) ||
+                !ChartInDomain(point.y, domains.y) { continue }
+            dx := ChartXPosition(bounds, domains.x, point.x) - x
+            if dx < 0.0 { dx = -dx }
+            dy := ChartYPosition(bounds, domains.y, point.y) - y
+            if dy < 0.0 { dy = -dy }
+            if linked && dx > 0.001 { continue }
+            if !linked && item.mark == cast(XYMark)XYPoint && (dx * dx + dy * dy > 100.0) { continue }
+            if dx < best_x || (dx == best_x && dy < best_y) {
+                hit = .{.active = true, .index = j, .series = i, .x = point.x, .y = point.y}
+                best_x = dx
+                best_y = dy
+            }
+        }
+    }
+    return hit
+}
+
+#scope_file
+
+ChartFrame :: struct {
+    props: ChartProps
+    bounds: Rectangle
+    plot: Rectangle
+    clip: Rectangle
+    node: s32
+    text: Color
+    grid: Color
+    surface: Color
+    accent: Color
+    positive: Color
+    negative: Color
+    mouse: Vector2
+    pointed: bool
+}
+
+ChartColor :: (view: ChartFrame, packed: u32, index: s64) -> Color {
+    if packed != 0 { return ColorFromPacked(packed) }
+    if index % 6 == 0 { return view.accent }
+    choices: [5]u32 = .{0xe39a43ff, 0x40a787ff, 0xb381dcff, 0x55adc4ff, 0xd47191ff}
+    return ColorFromPacked(choices[index % 6 - 1])
+}
+
+ChartStart :: (session: Session, props: ChartProps, left: float32) -> ChartFrame {
+    view: ChartFrame
+    view.props = props
+    view.bounds = props.bounds
+    view.node = -1
+    if props.bounds.width <= 0.0 || props.bounds.height <= 0.0 { return view }
+    empty: []float32
+    background := PlotProps.{.key = props.key, .bounds = props.bounds,
+        .semantic_label = props.label}
+    view.node = Surface.Plot(session, background, empty)
+    if view.node >= 0 { view.bounds = TreeSubmittedNodeAt(session, view.node).bounds }
+    view.clip = view.bounds
+    geometry := TreeCurrentPaintGeometry(session)
+    if geometry.clipped { view.clip = RectangleIntersection(view.clip, geometry.clip) }
+    face := Surface.PlotFacesFor(background, Surface.DefaultPlotFaces())
+    palette := Theme.CurrentPalette()
+    view.text = ColorFromPacked(face.plot.value.foreground)
+    view.surface = ColorFromPacked(face.plot.value.background)
+    view.grid = StyleTokenColorOr("grid", ColorFromPacked(palette.subtle_border))
+    view.accent = ColorFromPacked(face.mark.value.background)
+    view.positive = StyleTokenColorOr("success", ColorFromPacked(0x269b78ff))
+    view.negative = StyleTokenColorOr("danger", ColorFromPacked(0xcc5a60ff))
+    top: float32 = 12.0
+    if props.label != "" { top = 33.0 }
+    view.plot = .{view.bounds.x + left, view.bounds.y + top,
+        view.bounds.width - left - 17.0, view.bounds.height - top - 27.0}
+    input := PointerSample(session)
+    view.mouse = .{input.x, input.y}
+    view.pointed = ChartInside(view.clip, view.mouse.x, view.mouse.y)
+    ChartText(session, view, props.label, view.bounds.x + 10.0, view.bounds.y + 7.0, 14, view.bounds)
+    return view
+}
+
+ChartText :: (session: Session, view: ChartFrame, label: string, x: float32,
+    y: float32, font: s32, clip: Rectangle) {
+    if label == "" || clip.width <= 0.0 || clip.height <= 0.0 { return }
+    PaintClippedLabel(session, view.node, label, cast(s32)x, cast(s32)y, font, view.text, clip)
+}
+
+ChartTextWidth :: (text: string, font: s32) -> float32 {
+    return cast(float32)GlyphWidth(text, font, "")
+}
+
+ChartLegendItem :: (session: Session, view: *ChartFrame, cursor: *Vector2,
+    label: string, color: Color) {
+    if label == "" || view.props.hide_legend { return }
+    available := view.bounds.width - 20.0
+    if available < 20.0 { return }
+    width := ChartTextWidth(label, 12) + 24.0
+    if width > available { width = available }
+    if cursor.x + width > view.bounds.x + view.bounds.width - 10.0 {
+        cursor.x = view.bounds.x + 10.0
+        cursor.y += 18.0
+    }
+    if cursor.y + 22.0 > view.bounds.y + view.bounds.height - 48.0 { return }
+    PaintRoundedFill(session, view.node, Rectangle.{cursor.x, cursor.y + 4.0, 9.0, 9.0}, 2.0, 8, color)
+    ChartText(session, view.*, label, cursor.x + 14.0, cursor.y, 12,
+        Rectangle.{cursor.x + 14.0, cursor.y, width - 14.0, 17.0})
+    bottom := view.plot.y + view.plot.height
+    view.plot.y = cursor.y + 22.0
+    view.plot.height = bottom - view.plot.y
+    cursor.x += width
+}
+
+ChartDate :: (seconds: float64, span: float64, full: bool = false) -> Text {
+    if seconds < -62135596800.0 || seconds >= 253402300800.0 || !Finite.Finite64(seconds) {
+        return TextCopy("Out of range")
+    }
+    second := cast(s64)seconds
+    if cast(float64)second > seconds { second -= 1 }
+    day: [10]u8
+    if Dates.WriteIsoDay(second, day[:]) != 10 { return TextCopy("Out of range") }
+    out := Vec(u8).{}
+    BuilderAppend(out, TextView(day[:]))
+    if span <= 172800.0 || (full && second % 86400 != 0) {
+        clock: [14]u8
+        unused Dates.WriteCompactUtc(second, clock[:])
+        BuilderAppend(out, " ")
+        BuilderAppend(out, TextView(clock[8:10]))
+        BuilderAppend(out, ":")
+        BuilderAppend(out, TextView(clock[10:12]))
+        if full || span < 240.0 {
+            BuilderAppend(out, ":")
+            BuilderAppend(out, TextView(clock[12:14]))
+        }
+    }
+    return BuilderFinish(out)
+}
+
+ChartXText :: (view: ChartFrame, domain: ChartDomain, value: float64, full: bool = false) -> Text {
+    if view.props.date_x { return ChartDate(value, domain.high - domain.low, full) }
+    return ChartFormat(value, view.props.x_unit)
+}
+
+ChartCenteredText :: (session: Session, view: ChartFrame, text: string, x: float32,
+    y: float32, width: float32) {
+    clip := RectangleIntersection(view.bounds, Rectangle.{x - width * 0.5, y, width, 16.0})
+    offset := ChartTextWidth(text, 11) * 0.5
+    if offset > width * 0.5 { offset = width * 0.5 }
+    ChartText(session, view, text, x - offset, y, 11, clip)
+}
+
+ChartAxes :: (session: Session, view: ChartFrame, domain: ChartDomain, horizontal: bool = false) {
+    if !domain.valid { return }
+    for i: 0..4 {
+        fraction := cast(float64)i / 4.0
+        value := ChartCoordinate(domain, fraction)
+        label: Text = ChartFormat(value, view.props.y_unit)
+        if horizontal {
+            x := ChartXPosition(view.plot, domain, value)
+            PaintLine(session, view.node, Rectangle.{x, view.plot.y, 0.0, view.plot.height}, view.grid)
+            ChartCenteredText(session, view, label, x, view.plot.y + view.plot.height + 5.0,
+                view.plot.width / 4.0 - 2.0)
+        } else {
+            y := ChartYPosition(view.plot, domain, value)
+            PaintLine(session, view.node, Rectangle.{view.plot.x, y, view.plot.width, 0.0}, view.grid)
+            x := view.plot.x - 7.0 - ChartTextWidth(label, 11)
+            if x < view.bounds.x + 2.0 { x = view.bounds.x + 2.0 }
+            ChartText(session, view, label, x, y - 7.0, 11,
+                Rectangle.{view.bounds.x, view.plot.y - 8.0, view.plot.x - view.bounds.x - 4.0, view.plot.height + 16.0})
+        }
+    }
+}
+
+ChartTimeAxis :: (session: Session, view: ChartFrame, domain: ChartDomain) {
+    if view.props.hide_x_axis || !domain.valid { return }
+    spacing: float32 = ifx view.props.date_x then 142.0 else 92.0
+    ticks := cast(s32)(view.plot.width / spacing) + 1
+    if ticks < 2 { ticks = 2 }
+    if ticks > 7 { ticks = 7 }
+    slot := view.plot.width / cast(float32)(ticks - 1)
+    for i: 0..ticks-1 {
+        value := ChartCoordinate(domain, cast(float64)i / cast(float64)(ticks - 1))
+        label: Text = ChartXText(view, domain, value)
+        x := ChartXPosition(view.plot, domain, value)
+        half := ChartTextWidth(label, 11) * 0.5 + 1.0
+        if x + half > view.bounds.x + view.bounds.width { x = view.bounds.x + view.bounds.width - half }
+        ChartCenteredText(session, view, label, x, view.plot.y + view.plot.height + 5.0, slot - 2.0)
+    }
+}
+
+ChartEmpty :: (session: Session, view: ChartFrame) {
+    ChartCenteredText(session, view, "No data", view.plot.x + view.plot.width * 0.5,
+        view.plot.y + view.plot.height * 0.5 - 7.0, view.plot.width)
+}
+
+ChartTooltip :: (session: Session, view: ChartFrame, x: float32, y: float32, text: string) {
+    if view.props.hide_tooltip || text == "" { return }
+    width := ChartTextWidth(text, 12) + 16.0
+    if width > view.clip.width { width = view.clip.width }
+    if width < 16.0 || view.clip.height < 23.0 { return }
+    if x + width > view.clip.x + view.clip.width { x = view.clip.x + view.clip.width - width }
+    if x < view.clip.x { x = view.clip.x }
+    if y + 23.0 > view.clip.y + view.clip.height { y = view.clip.y + view.clip.height - 23.0 }
+    if y < view.clip.y { y = view.clip.y }
+    box := Rectangle.{x, y, width, 23.0}
+    PaintRoundedFill(session, view.node, box, 4.0, 10, view.surface)
+    PaintRoundedOutline(session, view.node, box, 4.0, 10, 1.0, view.grid)
+    ChartText(session, view, text, x + 8.0, y + 4.0, 12, box)
+}
+
+ChartTipValue :: (session: Session, view: ChartFrame, category: string,
+    name: string, value: float64, missing: bool) {
+    if view.props.hide_tooltip { return }
+    formatted: Text = ChartFormat(value, view.props.y_unit)
+    out := Vec(u8).{}
+    BuilderAppend(out, category)
+    if name != "" { BuilderPrint(*out, "  ·  %", name) }
+    BuilderAppend(out, "  ·  ")
+    if missing { BuilderAppend(out, "No data") } else { BuilderAppend(out, TextView(formatted)) }
+    tip: Text = BuilderFinish(out)
+    ChartTooltip(session, view, view.mouse.x + 10.0, view.mouse.y + 12.0, tip)
+}
+
+// Clip each data axis before converting to pixels. Explicit ranges can cut
+// through a segment while still showing its visible portion.
+ChartClipAxis :: (a: *XYPointValue, b: *XYPointValue, domain: ChartDomain, x_axis: bool) -> bool {
+    first := ifx x_axis then a.x else a.y
+    last := ifx x_axis then b.x else b.y
+    if (first < domain.low && last < domain.low) ||
+        (first > domain.high && last > domain.high) { return false }
+    old_a := a.*
+    old_b := b.*
+    ordered := first <= last
+    sample := ifx ordered then ChartDomain.{first, last, true} else ChartDomain.{last, first, true}
+    for end: 0..1 {
+        value := ifx end == 0 then first else last
+        if value >= domain.low && value <= domain.high { continue }
+        limit := ifx value < domain.low then domain.low else domain.high
+        fraction := ChartFraction(limit, sample)
+        if !ordered { fraction = 1.0 - fraction }
+        point := ifx end == 0 then a else b
+        if x_axis {
+            point.x = limit
+            point.y = old_a.y * (1.0 - fraction) + old_b.y * fraction
+        } else {
+            point.x = old_a.x * (1.0 - fraction) + old_b.x * fraction
+            point.y = limit
+        }
+    }
+    return true
+}
+
+ChartSegment :: (session: Session, view: ChartFrame, domains: XYDomains,
+    from: XYPointValue, to: XYPointValue, color: Color) {
+    a := from
+    b := to
+    if !ChartClipAxis(*a, *b, domains.x, true) || !ChartClipAxis(*a, *b, domains.y, false) { return }
+    x := ChartXPosition(view.plot, domains.x, a.x)
+    y := ChartYPosition(view.plot, domains.y, a.y)
+    PaintLine(session, view.node, Rectangle.{x, y,
+        ChartXPosition(view.plot, domains.x, b.x) - x, ChartYPosition(view.plot, domains.y, b.y) - y}, color)
+}
+
+ChartPoint :: (session: Session, view: ChartFrame, domains: XYDomains,
+    point: XYPointValue, color: Color) {
+    if !ChartInDomain(point.x, domains.x) || !ChartInDomain(point.y, domains.y) { return }
+    x := ChartXPosition(view.plot, domains.x, point.x)
+    y := ChartYPosition(view.plot, domains.y, point.y)
+    PaintRoundedFill(session, view.node, Rectangle.{x - 3.0, y - 3.0, 6.0, 6.0}, 3.0, 10, color)
+}
+
+ChartCrosshair :: (session: Session, view: ChartFrame, domain: ChartDomain, date: float64) {
+    if !ChartInDomain(date, domain) { return }
+    x := ChartXPosition(view.plot, domain, date)
+    PaintLine(session, view.node, Rectangle.{x, view.plot.y, 0.0, view.plot.height}, view.text)
+}
+
+#scope_export
+
+#program_export
+XYChart :: (session: Session, props: ChartProps, series: []XYSeries) -> ChartHit {
+    view := ChartStart(session, props, 78.0)
+    cursor := Vector2.{view.bounds.x + 10.0, view.plot.y - 2.0}
+    for i: 0..series.count-1 {
+        ChartLegendItem(session, *view, *cursor, series[i].name, ChartColor(view, series[i].color, i))
+    }
+    hit := ChartNoHit()
+    if view.plot.width <= 0.0 || view.plot.height <= 0.0 { return hit }
+    domains := XYChartDomains(props, series)
+    ChartAxes(session, view, domains.y)
+    ChartTimeAxis(session, view, domains.x)
+    has_data := false
+    for i: 0..series.count-1 {
+        item := series[i]
+        color := ChartColor(view, item.color, i)
+        for j: 0..item.points.count-1 {
+            point := item.points[j]
+            if !XYValid(point) { continue }
+            has_data = true
+            previous := j > 0 && XYValid(item.points[j - 1])
+            next := j + 1 < item.points.count && XYValid(item.points[j + 1])
+            if item.mark == cast(XYMark)XYPoint || (!previous && !next) { ChartPoint(session, view, domains, point, color) }
+            if !previous || item.mark == cast(XYMark)XYPoint { continue }
+            before := item.points[j - 1]
+            if item.mark == cast(XYMark)XYStep {
+                corner := XYPointValue.{point.x, before.y, false}
+                ChartSegment(session, view, domains, before, corner, color)
+                before = corner
+            }
+            ChartSegment(session, view, domains, before, point, color)
+        }
+    }
+    if !has_data { ChartEmpty(session, view) }
+    if view.pointed { hit = XYChartHit(view.plot, domains, series, view.mouse.x, view.mouse.y) }
+    linked := props.link_hover && ChartInDomain(props.hover_x, domains.x)
+    if !hit.active && !linked { return hit }
+    selected_x := ifx linked then props.hover_x else hit.x
+    ChartCrosshair(session, view, domains.x, selected_x)
+    if props.hide_tooltip { return hit }
+    label: Text = ChartXText(view, domains.x, selected_x, true)
+    x := ChartXPosition(view.plot, domains.x, selected_x)
+    y := view.plot.y + 5.0
+    ChartTooltip(session, view, x + 8.0, y, label)
+    for i: 0..series.count-1 {
+        item := series[i]
+        for point: item.points {
+            if !XYValid(point) || point.x != selected_x { continue }
+            rendered: Text = ChartFormat(point.y, props.y_unit)
+            row := Vec(u8).{}
+            if item.name != "" { BuilderPrint(*row, "%  ·  ", item.name) }
+            BuilderAppend(row, TextView(rendered))
+            tip: Text = BuilderFinish(row)
+            y += 23.0
+            if y + 23.0 <= view.clip.y + view.clip.height {
+                ChartTooltip(session, view, x + 8.0, y, tip)
+            }
+            break
+        }
+    }
+    return hit
+}
+
+#scope_file
+
+CategoricalSlot :: (area: Rectangle, index: s64, count: s64, horizontal: bool) -> Rectangle {
+    if count <= 0 || index < 0 || index >= count { return Rectangle.{} }
+    if horizontal {
+        height := area.height / cast(float32)count
+        return Rectangle.{area.x, area.y + cast(float32)index * height, area.width, height}
+    }
+    width := area.width / cast(float32)count
+    return Rectangle.{area.x + cast(float32)index * width, area.y, width, area.height}
+}
+
+ChartClamp :: (value: float64, domain: ChartDomain) -> float64 {
+    if value < domain.low { return domain.low }
+    if value > domain.high { return domain.high }
+    return value
+}
+
+#scope_export
+
+#program_export
+BarChartDomain :: (props: ChartProps, count: s64, series: []BarSeries) -> ChartDomain {
+    domain := ChartDomain.{0.0, 0.0, true}
+    for item: series {
+        limit := ifx item.values.count < count then item.values.count else count
+        for i: 0..limit-1 {
+            value := item.values[i]
+            if !value.missing { ChartDomainInclude(*domain, value.value) }
+        }
+    }
+    return ChartDomainResolve(domain, props.y_min, props.y_max)
+}
+
+// The very same rectangle is used for painting and picking each group member.
+#program_export
+ChartBarBounds :: (area: Rectangle, domain: ChartDomain, category: s64, categories: s64,
+    series: s64, series_count: s64, start: float64, finish: float64, horizontal: bool = false) -> Rectangle {
+    if !domain.valid || series_count <= 0 || series < 0 || series >= series_count ||
+        !Finite.Finite64(start) || !Finite.Finite64(finish) { return Rectangle.{} }
+    slot := CategoricalSlot(area, category, categories, horizontal)
+    if slot.width <= 0.0 || slot.height <= 0.0 { return Rectangle.{} }
+    a := ChartClamp(start, domain)
+    b := ChartClamp(finish, domain)
+    low := ifx a < b then a else b
+    high := ifx a > b then a else b
+    cross := ifx horizontal then slot.height else slot.width
+    step := 0.8 * cross / cast(float32)series_count
+    offset := cross * 0.1 + step * (cast(float32)series + 0.08)
+    width := step * 0.84
+    if horizontal {
+        x := ChartXPosition(area, domain, low)
+        return Rectangle.{x, slot.y + offset, ChartXPosition(area, domain, high) - x, width}
+    }
+    y := ChartYPosition(area, domain, high)
+    return Rectangle.{slot.x + offset, y, width, ChartYPosition(area, domain, low) - y}
+}
+
+#scope_file
+
+ChartPickBar :: (view: ChartFrame, mark: Rectangle, zero: bool, horizontal: bool) -> bool {
+    if !view.pointed || !ChartInside(view.plot, view.mouse.x, view.mouse.y) { return false }
+    if zero {
+        if horizontal { mark.x -= 3.0; mark.width = 6.0 }
+        else { mark.y -= 3.0; mark.height = 6.0 }
+    }
+    return ChartInside(mark, view.mouse.x, view.mouse.y)
+}
+
+ChartPaintBar :: (session: Session, view: ChartFrame, mark: Rectangle, zero: bool,
+    horizontal: bool, color: Color) {
+    if zero {
+        if horizontal { mark.x -= 0.5; mark.width = 1.0 }
+        else { mark.y -= 0.5; mark.height = 1.0 }
+    }
+    mark = RectangleIntersection(view.plot, mark)
+    if mark.width > 0.0 && mark.height > 0.0 {
+        PaintRoundedFill(session, view.node, mark, 0.0, 0, color)
+    }
+}
+
+ChartZeroLine :: (session: Session, view: ChartFrame, domain: ChartDomain, horizontal: bool) {
+    if !ChartInDomain(0.0, domain) { return }
+    if horizontal {
+        x := ChartXPosition(view.plot, domain, 0.0)
+        PaintLine(session, view.node, Rectangle.{x, view.plot.y, 0.0, view.plot.height}, view.text)
+    } else {
+        y := ChartYPosition(view.plot, domain, 0.0)
+        PaintLine(session, view.node, Rectangle.{view.plot.x, y, view.plot.width, 0.0}, view.text)
+    }
+}
+
+ChartCategory :: (session: Session, view: ChartFrame, label: string, index: s64, count: s64,
+    horizontal: bool) {
+    if !horizontal && view.props.hide_x_axis { return }
+    slot := CategoricalSlot(view.plot, index, count, horizontal)
+    if horizontal {
+        y := slot.y + (slot.height - 13.0) * 0.5
+        clip := Rectangle.{view.bounds.x, slot.y, view.plot.x - view.bounds.x - 4.0, slot.height}
+        ChartText(session, view, label, view.bounds.x + 8.0, y, 11, clip)
+    } else {
+        ChartCenteredText(session, view, label, slot.x + slot.width * 0.5,
+            view.plot.y + view.plot.height + 5.0, slot.width - 3.0)
+    }
+}
+
+#scope_export
+
+#program_export
+BarChart :: (session: Session, props: ChartProps, categories: []string, series: []BarSeries) -> ChartHit {
+    left: float32 = 78.0
+    if props.horizontal {
+        left = props.bounds.width * 0.31
+        if left > 190.0 { left = 190.0 }
+    }
+    view := ChartStart(session, props, left)
+    cursor := Vector2.{view.bounds.x + 10.0, view.plot.y - 2.0}
+    for i: 0..series.count-1 {
+        ChartLegendItem(session, *view, *cursor, series[i].name, ChartColor(view, series[i].color, i))
+    }
+    hit := ChartNoHit()
+    if view.plot.width <= 0.0 || view.plot.height <= 0.0 { return hit }
+    domain := BarChartDomain(props, categories.count, series)
+    ChartAxes(session, view, domain, props.horizontal)
+    ChartZeroLine(session, view, domain, props.horizontal)
+    has_data := false
+    for category: 0..categories.count-1 {
+        ChartCategory(session, view, categories[category], category, categories.count, props.horizontal)
+        for i: 0..series.count-1 {
+            item := series[i]
+            if category >= item.values.count { continue }
+            value := item.values[category]
+            if value.missing || !Finite.Finite64(value.value) { continue }
+            has_data = true
+            mark := ChartBarBounds(view.plot, domain, category, categories.count, i, series.count,
+                0.0, value.value, props.horizontal)
+            zero := value.value == 0.0 && ChartInDomain(0.0, domain)
+            ChartPaintBar(session, view, mark, zero, props.horizontal, ChartColor(view, item.color, i))
+            if ChartPickBar(view, mark, zero, props.horizontal) {
+                hit = .{.active = true, .index = category, .series = i,
+                    .x = cast(float64)category, .y = value.value}
+            }
+        }
+    }
+    if !has_data { ChartEmpty(session, view) }
+    if hit.active { ChartTipValue(session, view, categories[hit.index], series[hit.series].name, hit.y, false) }
+    return hit
+}
+
+#program_export
+HeatmapHit :: (area: Rectangle, cols: s64, rows: s64, cells: []ChartValue,
+    x: float32, y: float32) -> ChartHit {
+    if cols <= 0 || rows <= 0 || !ChartInside(area, x, y) { return ChartNoHit() }
+    col := cast(s64)((x - area.x) / area.width * cast(float32)cols)
+    row := cast(s64)((y - area.y) / area.height * cast(float32)rows)
+    if col >= cols { col = cols - 1 }
+    if row >= rows { row = rows - 1 }
+    at := row * cols + col
+    hit := ChartHit.{.active = true, .missing = true, .index = col, .series = row, .x = cast(float64)col}
+    if at < cells.count && !cells[at].missing && Finite.Finite64(cells[at].value) {
+        hit.missing = false
+        hit.y = cells[at].value
+    }
+    return hit
+}
+
+#scope_file
+
+ChartBlend :: (first: Color, last: Color, fraction: float64) -> Color {
+    a := 1.0 - fraction
+    return Color.{.r = cast(u8)(cast(float64)first.r * a + cast(float64)last.r * fraction),
+        .g = cast(u8)(cast(float64)first.g * a + cast(float64)last.g * fraction),
+        .b = cast(u8)(cast(float64)first.b * a + cast(float64)last.b * fraction),
+        .a = cast(u8)(cast(float64)first.a * a + cast(float64)last.a * fraction)}
+}
+
+HeatColor :: (view: ChartFrame, value: float64, span: float64) -> Color {
+    if span <= 0.0 { return view.surface }
+    if value < 0.0 { return ChartBlend(view.surface, view.negative, -value / span) }
+    return ChartBlend(view.surface, view.positive, value / span)
+}
+
+HeatLegend :: (session: Session, view: *ChartFrame, span: float64) {
+    if view.props.hide_legend || view.plot.width < 100.0 || view.plot.height < 64.0 { return }
+    w := view.plot.width / 2.0
+    if w > 200.0 { w = 200.0 }
+    x := view.plot.x + (view.plot.width - w) * 0.5
+    y := view.plot.y
+    for i: 0..20 {
+        value := (cast(float64)i / 10.0 - 1.0) * span
+        PaintRoundedFill(session, view.node, Rectangle.{x + cast(float32)i * w / 21.0,
+            y, w / 21.0, 6.0}, 0.0, 0, HeatColor(view.*, value, span))
+    }
+    zero: Text = ChartFormat(0.0, view.props.y_unit)
+    ChartCenteredText(session, view.*, zero, x + w / 2.0, y + 9.0, w / 2.0)
+    if span > 0.0 {
+        low: Text = ChartFormat(-span, view.props.y_unit)
+        high: Text = ChartFormat(span, view.props.y_unit)
+        ChartCenteredText(session, view.*, low, x, y + 9.0, w / 2.0)
+        ChartCenteredText(session, view.*, high, x + w, y + 9.0, w / 2.0)
+    }
+    view.plot.y += 30.0
+    view.plot.height -= 30.0
+}
+
+#scope_export
+
+#program_export
+HeatmapChart :: (session: Session, props: ChartProps, columns: []string,
+    rows: []string, cells: []ChartValue) -> ChartHit {
+    view := ChartStart(session, props, 88.0)
+    hit := ChartNoHit()
+    if view.plot.width <= 0.0 || view.plot.height <= 0.0 { return hit }
+    if columns.count == 0 || rows.count == 0 { ChartEmpty(session, view); return hit }
+    span: float64 = 0.0
+    count := columns.count * rows.count
+    if cells.count < count { count = cells.count }
+    for i: 0..count-1 {
+        value := cells[i]
+        if value.missing || !Finite.Finite64(value.value) { continue }
+        size := ifx value.value < 0.0 then -value.value else value.value
+        if size > span { span = size }
+    }
+    HeatLegend(session, *view, span)
+    dx := view.plot.width / cast(float32)columns.count
+    dy := view.plot.height / cast(float32)rows.count
+    for col: 0..columns.count-1 { ChartCategory(session, view, columns[col], col, columns.count, false) }
+    for row: 0..rows.count-1 {
+        ChartCategory(session, view, rows[row], row, rows.count, true)
+        for col: 0..columns.count-1 {
+            at := row * columns.count + col
+            box := Rectangle.{view.plot.x + cast(float32)col * dx,
+                view.plot.y + cast(float32)row * dy, dx, dy}
+            if dx > 3.0 && dy > 3.0 { box.width -= 1.0; box.height -= 1.0 }
+            missing := at >= cells.count || cells[at].missing || !Finite.Finite64(cells[at].value)
+            color := view.grid
+            if !missing { color = HeatColor(view, cells[at].value, span) }
+            PaintRoundedFill(session, view.node, box, 0.0, 0, color)
+            if missing && box.width >= 7.0 && box.height >= 7.0 {
+                PaintLine(session, view.node, Rectangle.{box.x + 3.0, box.y + box.height - 3.0,
+                    box.width - 6.0, 6.0 - box.height}, view.text)
+            }
+        }
+    }
+    if view.pointed { hit = HeatmapHit(view.plot, columns.count, rows.count, cells, view.mouse.x, view.mouse.y) }
+    if hit.active { ChartTipValue(session, view, columns[hit.index], rows[hit.series], hit.y, hit.missing) }
+    return hit
+}
+
+WaterfallSpan :: struct { start: float64; finish: float64; valid: bool }
+
+#program_export
+WaterfallApply :: (running: float64, step: WaterfallStep) -> WaterfallSpan {
+    if step.missing || !Finite.Finite64(step.value) { return WaterfallSpan.{running, running, false} }
+    start := ifx step.total then 0.0 else running
+    finish := start + step.value
+    if !Finite.Finite64(finish) { return WaterfallSpan.{running, running, false} }
+    return WaterfallSpan.{start, finish, true}
+}
+
+#program_export
+WaterfallChart :: (session: Session, props: ChartProps, steps: []WaterfallStep) -> ChartHit {
+    view := ChartStart(session, props, 78.0)
+    hit := ChartNoHit()
+    if view.plot.width <= 0.0 || view.plot.height <= 0.0 { return hit }
+    observed := ChartDomain.{0.0, 0.0, true}
+    running: float64 = 0.0
+    has_data := false
+    for step: steps {
+        span := WaterfallApply(running, step)
+        running = span.finish
+        if span.valid { has_data = true; ChartDomainInclude(*observed, running) }
+    }
+    domain := ChartDomainResolve(observed, props.y_min, props.y_max)
+    ChartAxes(session, view, domain)
+    ChartZeroLine(session, view, domain, false)
+    running = 0.0
+    previous := Rectangle.{}
+    connect := false
+    for index: 0..steps.count-1 {
+        step := steps[index]
+        ChartCategory(session, view, step.label, index, steps.count, false)
+        span := WaterfallApply(running, step)
+        running = span.finish
+        if !span.valid { connect = false; continue }
+        mark := ChartBarBounds(view.plot, domain, index, steps.count, 0, 1, span.start, span.finish)
+        if connect && !step.total && ChartInDomain(span.start, domain) {
+            y := ChartYPosition(view.plot, domain, span.start)
+            edge := previous.x + previous.width
+            PaintLine(session, view.node, Rectangle.{edge, y, mark.x - edge, 0.0}, view.text)
+        }
+        color := ifx step.value < 0.0 then view.negative else view.positive
+        if step.total { color = view.accent }
+        zero := span.start == span.finish && ChartInDomain(span.start, domain)
+        ChartPaintBar(session, view, mark, zero, false, color)
+        if ChartPickBar(view, mark, zero, false) {
+            hit = .{.active = true, .index = index, .series = 0, .x = cast(float64)index, .y = step.value}
+        }
+        previous = mark
+        connect = true
+    }
+    if !has_data { ChartEmpty(session, view) }
+    if hit.active {
+        step := steps[hit.index]
+        ChartTipValue(session, view, step.label, ifx step.total then "Total" else "Change", hit.y, false)
+    }
+    return hit
+}
+
+#scope_file
+
+TimeCandleValid :: (bar: Candle.PriceBar64) -> bool {
+    return Finite.Finite64(bar.open) && Finite.Finite64(bar.close) &&
+        Finite.Finite64(bar.high) && Finite.Finite64(bar.low) && bar.high >= bar.low &&
+        bar.open >= bar.low && bar.open <= bar.high && bar.close >= bar.low && bar.close <= bar.high
+}
+
+TimeCandleTip :: (session: Session, view: ChartFrame, domain: ChartDomain, bar: Candle.PriceBar64) {
+    if view.props.hide_tooltip { return }
+    date: Text = ChartXText(view, domain, cast(float64)bar.timestamp, true)
+    x := ChartXPosition(view.plot, domain, cast(float64)bar.timestamp) + 9.0
+    ChartTooltip(session, view, x, view.plot.y + 5.0, date)
+    labels: [4]string = .{"Open", "High", "Low", "Close"}
+    values: [4]float64 = .{bar.open, bar.high, bar.low, bar.close}
+    for i: 0..3 {
+        y := view.plot.y + 28.0 + cast(float32)i * 23.0
+        if y + 23.0 > view.clip.y + view.clip.height { break }
+        value: Text = ChartFormat(values[i], view.props.y_unit)
+        out := Vec(u8).{}
+        BuilderPrint(*out, "%  ·  %", labels[i], TextView(value))
+        tip: Text = BuilderFinish(out)
+        ChartTooltip(session, view, x, y, tip)
+    }
+}
+
+ChartResolveX :: (domain: ChartDomain, props: ChartProps) -> ChartDomain {
+    if props.date_x && domain.valid && domain.low == domain.high && !(props.x_min < props.x_max) {
+        return ChartDomain.{domain.low - 0.5, domain.high + 0.5, true}
+    }
+    return ChartDomainResolve(domain, props.x_min, props.x_max)
+}
+
+TimeCandleAt :: (bars: []Candle.PriceBar64, legacy: []Candle.PriceBar, index: s64) -> Candle.PriceBar64 {
+    if index < bars.count { return bars[index] }
+    bar := legacy[index - bars.count]
+    return Candle.PriceBar64.{.timestamp = bar.timestamp, .open = cast(float64)bar.open,
+        .high = cast(float64)bar.high, .low = cast(float64)bar.low, .close = cast(float64)bar.close}
+}
+
+DrawTimeCandles :: (session: Session, props: ChartProps, bars: []Candle.PriceBar64,
+    legacy: []Candle.PriceBar) -> ChartHit {
+    props.date_x = true
+    view := ChartStart(session, props, 78.0)
+    hit := ChartNoHit()
+    if view.plot.width <= 0.0 || view.plot.height <= 0.0 { return hit }
+    domains: XYDomains
+    count := bars.count + legacy.count
+    for i: 0..count-1 {
+        bar := TimeCandleAt(bars, legacy, i)
+        ChartDomainInclude(*domains.x, cast(float64)bar.timestamp)
+        if !TimeCandleValid(bar) { continue }
+        ChartDomainInclude(*domains.y, bar.low)
+        ChartDomainInclude(*domains.y, bar.high)
+    }
+    domains.x = ChartResolveX(domains.x, props)
+    domains.y = ChartDomainResolve(domains.y, props.y_min, props.y_max)
+    ChartAxes(session, view, domains.y)
+    ChartTimeAxis(session, view, domains.x)
+    if count == 0 || !domains.y.valid || !domains.x.valid { ChartEmpty(session, view); return hit }
+    width := view.plot.width / cast(float32)count * 0.62
+    if width > 13.0 { width = 13.0 }
+    if width < 1.0 { width = 1.0 }
+    pick := view.pointed && ChartInside(view.plot, view.mouse.x, view.mouse.y)
+    nearest := view.plot.width + 1.0
+    has_data := false
+    for i: 0..count-1 {
+        bar := TimeCandleAt(bars, legacy, i)
+        timestamp := cast(float64)bar.timestamp
+        if !TimeCandleValid(bar) || !ChartInDomain(timestamp, domains.x) ||
+            bar.low > domains.y.high || bar.high < domains.y.low { continue }
+        has_data = true
+        x := ChartXPosition(view.plot, domains.x, timestamp)
+        color := ifx bar.close < bar.open then view.negative else view.positive
+        low := ChartYPosition(view.plot, domains.y, ChartClamp(bar.low, domains.y))
+        high := ChartYPosition(view.plot, domains.y, ChartClamp(bar.high, domains.y))
+        PaintLine(session, view.node, Rectangle.{x, high, 0.0, low - high}, color)
+        lower := ifx bar.open < bar.close then bar.open else bar.close
+        upper := ifx bar.open > bar.close then bar.open else bar.close
+        bottom := ChartYPosition(view.plot, domains.y, ChartClamp(lower, domains.y))
+        top := ChartYPosition(view.plot, domains.y, ChartClamp(upper, domains.y))
+        if bottom - top < 1.0 { top -= 0.5; bottom += 0.5 }
+        if upper >= domains.y.low && lower <= domains.y.high {
+            body := RectangleIntersection(view.plot, Rectangle.{x - width / 2.0, top, width, bottom - top})
+            PaintRoundedFill(session, view.node, body, 0.0, 0, color)
+        }
+        distance := view.mouse.x - x
+        if distance < 0.0 { distance = -distance }
+        if pick && distance < nearest {
+            nearest = distance
+            hit = .{.active = true, .index = i, .series = 0, .x = timestamp, .y = bar.close}
+        }
+    }
+    if !has_data { ChartEmpty(session, view) }
+    if props.link_hover && ChartInDomain(props.hover_x, domains.x) {
+        ChartCrosshair(session, view, domains.x, props.hover_x)
+        if !props.hide_tooltip {
+            for i: 0..count-1 {
+                bar := TimeCandleAt(bars, legacy, i)
+                if cast(float64)bar.timestamp == props.hover_x && TimeCandleValid(bar) {
+                    TimeCandleTip(session, view, domains.x, bar)
+                    break
+                }
+            }
+        }
+    } else if hit.active {
+        ChartCrosshair(session, view, domains.x, hit.x)
+        TimeCandleTip(session, view, domains.x, TimeCandleAt(bars, legacy, hit.index))
+    }
+    return hit
+}
+
+#scope_export
+
+// Chronological OHLC panes align with XYChart using the same left edge,
+// width and x range. Supply the active pane's hit.x to peers.
+#program_export
+TimeCandleChart :: (session: Session, props: ChartProps, bars: []Candle.PriceBar) -> ChartHit {
+    empty: []Candle.PriceBar64
+    return DrawTimeCandles(session, props, empty, bars)
+}
+
+#program_export
+TimeCandleChart64 :: (session: Session, props: ChartProps, bars: []Candle.PriceBar64) -> ChartHit {
+    empty: []Candle.PriceBar
+    return DrawTimeCandles(session, props, bars, empty)
+}

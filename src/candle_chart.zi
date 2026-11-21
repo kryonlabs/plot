@@ -3,7 +3,8 @@ ButtonWidget :: #import "kryon/button";
 #import "kryon/geometry"
 #import "kryon/paint_queue"
 #import "kryon/session"
-using PlotWidget :: #import "PlotWidget";
+#import "plot_widget"
+#import "plot_props"
 ChartMath :: #import "std/math";
 
 PriceBar :: struct {

@@ -8,3 +8,4 @@ using Candle :: #import "candle_chart";
 using Line :: #import "line_chart";
 using Band :: #import "band_chart";
 using BandProps :: #import "band_chart_props";
+using Dashboard :: #import "dashboard_chart";

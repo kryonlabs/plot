@@ -2,3 +2,5 @@
 using PlotPropsModule :: #import "plot_props";
 using PlotModule :: #import "plot";
 using PlotWidgetModule :: #import "plot_widget";
+// Typed dashboard charts also compose over the retained Plot surface.
+using Dashboard :: #import "dashboard_chart";

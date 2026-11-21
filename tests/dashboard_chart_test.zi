@@ -1,0 +1,70 @@
+using Plot :: #import "Plot";
+using Surface :: #import "PlotWidget";
+Math :: #import "std/math";
+#import "kryon/geometry"
+
+#program_export
+main :: () -> s32 {
+    area := Rectangle.{10.0, 20.0, 400.0, 200.0}
+    selection: [4]Plot.XYPointValue = .{.{0.0, 100.0, false}, .{1.0, 104.0, false},
+        .{6.0, 0.0, true}, .{8.0, 110.37, false}}
+    benchmark: [2]Plot.XYPointValue = .{.{0.0, 100.0, false}, .{8.0, 293.58, false}}
+    series: [2]Plot.XYSeries = .{.{.name = "Selected", .points = selection[:]},
+        .{.name = "Buy and hold", .points = benchmark[:]}}
+    shared := Plot.XYChartDomains(.{}, series[:])
+    focus := Surface.XYChartDomains(.{}, series[0:1])
+    if shared.y.low != 100.0 || shared.y.high != 293.58 || focus.y.high != 110.37 { return 1 }
+    if Plot.ChartXPosition(area, shared.x, 1.0) != 60.0 { return 2 }
+    hit := Plot.XYChartHit(area, shared, series[:], 60.0, 216.0)
+    if !hit.active || hit.series != 0 || hit.index != 1 || hit.x != 1.0 || hit.y != 104.0 { return 3 }
+    linked := Plot.XYChartHit(area, shared, series[:], 310.0, 216.0, true)
+    if linked.active || linked.index != -1 { return 4 }
+    invalid: [3]Plot.XYPointValue = .{selection[0], .{1.0, Math.NotANumber(), false}, .{8.0, Math.Infinity(), false}}
+    invalid_series: [1]Plot.XYSeries = .{.{.points = invalid[:]}}
+    focus = Plot.XYChartDomains(.{}, invalid_series[:])
+    if focus.y.low != 98.0 || focus.y.high != 102.0 { return 5 }
+    if Plot.XYChartHit(area, focus, series[0:1], 60.0, 19.0).active { return 6 }
+    one := Plot.XYChartDomains(.{}, series[0:0])
+    if one.x.valid || one.y.valid { return 7 }
+    single: [1]Plot.XYSeries = .{.{.points = selection[0:1], .mark = .XYPoint}}
+    one = Plot.XYChartDomains(.{.date_x = true}, single[:])
+    if one.x.low != -0.5 || one.x.high != 0.5 { return 8 }
+    if !Plot.XYChartHit(area, one, single[:], 210.0, 120.0).active { return 9 }
+    if Plot.XYChartHit(area, one, single[:], 210.0, 160.0).active { return 10 }
+
+    good: [1]Plot.ChartValue = .{.{10.37, false}}
+    bad: [2]Plot.ChartValue = .{.{-64.2, false}, .{500.0, true}}
+    groups: [2]Plot.BarSeries = .{.{.values = good[:]}, .{.values = bad[:]}}
+    domain := Plot.BarChartDomain(.{}, 2, groups[:])
+    if domain.low != -64.2 || domain.high != 10.37 { return 11 }
+    rising := Plot.ChartBarBounds(area, domain, 0, 2, 0, 2, 0.0, 10.37)
+    falling := Plot.ChartBarBounds(area, domain, 0, 2, 1, 2, 0.0, -64.2)
+    if rising.y != area.y || rising.y + rising.height != falling.y ||
+        rising.x + rising.width >= falling.x || falling.y + falling.height != 220.0 { return 12 }
+    side := Plot.ChartBarBounds(area, domain, 0, 2, 1, 2, 0.0, -64.2, true)
+    if side.x != area.x || side.width <= 0.0 || side.height <= 0.0 { return 13 }
+    pp: Text = Plot.ChartFormat(good[0].value - bad[0].value, "pp")
+    if TextView(pp) != "74.57 pp" { return 14 }
+    compact: Text = Plot.ChartFormat(-1550021.0, "USD")
+    if TextView(compact) != "-1.55M USD" { return 15 }
+    percentage: Text = Plot.ChartFormat(10.37, "%")
+    if TextView(percentage) != "10.37%" { return 16 }
+    unavailable: Text = Plot.ChartFormat(invalid[1].y)
+    if TextView(unavailable) != "No data" { return 17 }
+
+    matrix: [3]Plot.ChartValue = .{.{0.0, false}, .{0.0, true}, .{-7.15, false}}
+    zero := Plot.HeatmapHit(area, 2, 2, matrix[:], 150.0, 60.0)
+    hole := Plot.HeatmapHit(area, 2, 2, matrix[:], 300.0, 60.0)
+    red := Plot.HeatmapHit(area, 2, 2, matrix[:], 150.0, 175.0)
+    tail := Plot.HeatmapHit(area, 2, 2, matrix[:], 410.0, 220.0)
+    if !zero.active || zero.missing || !hole.active || !hole.missing ||
+        red.series != 1 || red.index != 0 || red.y != -7.15 || !tail.missing { return 18 }
+
+    start := Plot.WaterfallApply(4.0, .{"Start", 20.0, true, false})
+    drop := Plot.WaterfallApply(start.finish, .{"Expenses", -25.0, false, false})
+    gap := Plot.WaterfallApply(drop.finish, .{"Missing", 100.0, false, true})
+    total := Plot.WaterfallApply(gap.finish, .{"Total", 8.0, true, false})
+    if start.start != 0.0 || drop.start != 20.0 || drop.finish != -5.0 ||
+        gap.valid || gap.finish != -5.0 || total.start != 0.0 || total.finish != 8.0 { return 19 }
+    return 0
+}

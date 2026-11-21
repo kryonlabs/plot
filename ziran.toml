@@ -1,7 +1,7 @@
 [package]
 name = "plot"
 entry = "src/app.zi"
-module_roots = ["src", "tests"]
+module_roots = ["src", "examples", "tests"]
 bridge_modules = ["app"]
 
 [toolchain]
@@ -10,7 +10,7 @@ ref = "9432a110709c4a4f72c4f732fcfc368e15213a54"
 
 [dependencies.kryon]
 git = "https://git.waozi.xyz/kryonlabs/kryon.git"
-ref = "9ea1567980771a061e7a9f78d7ab8b660e20bcf9"
+ref = "facaace35051336a2a993d90d1bb7d7396543852"
 
 [exports]
 # Public module is Plot; the lowercase export is retained for older imports.
@@ -28,3 +28,7 @@ default_profile = "cairo"
 
 [tool.kryon.profiles.cairo]
 backend = "desktop"
+
+[tool.kryon.profiles.portable]
+backend = "desktop"
+codegen = "zx"
