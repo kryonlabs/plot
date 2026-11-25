@@ -1,9 +1,11 @@
+App :: #import "kryon/app";
 DashboardExample :: #import "dashboard_charts";
 #import "kryon/geometry"
 #import "kryon/session"
 
-#program_export
-Frame :: (session: Session, viewport: Rectangle) -> s32 {
-    DashboardExample.Draw(session, viewport)
-    return 0
+Frame :: (frame: App.Frame) {
+    session := Session.{.slot = frame.slot, .epoch = frame.epoch}
+    DashboardExample.Draw(session, frame.viewport)
 }
+
+main :: () -> s32 { return App.Run(App.Window.{.title = "plot"}, Frame) }
