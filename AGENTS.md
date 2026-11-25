@@ -26,8 +26,8 @@ make dashboard-zx        # ZX build of the dashboard cookbook
 
 ## Pins
 
-- Ziran toolchain: `c041afb6de9b5f5f8be13c367563c267841e1cb6`
-- Kryon: `09664f076d3e8ea8db2013fb46fbcd9eda45c54b`
+- Ziran toolchain: `ba28d7c0a3f5583958a126a30006d92b506e96fb`
+- Kryon: `ad43e92a582786c592c3c205a4141c901a385e8c`
 
 Public module names use `UpperCamelCase`; lowercase names are implementation
 modules. Commit as Waozi <waozi@proton.me>; ordinary changes stay in
