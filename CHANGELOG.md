@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Recognize chart capabilities imported through the current `plot` package alias so bundled Habits opens offline.
+
 - Pin Ziran ba28d7c0 and Kryon 6a41ba74 so applications share the fixed GPU skinning, native entry, web scene compilation and hosted package naming paths.
 
 - Build with Ziran c041afb6 and Kryon 09664f07: the cookbook app declares `main` and runs `App.Run` like every Kryon program now that the program-export program entry is gone.

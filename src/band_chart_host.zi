@@ -27,7 +27,8 @@ band_chart_host_band_codecs: [BAND_CHART_HOST_LIMIT]WidgetBandChartBandCodec;
 // The module a bundle names the chart by: band_chart, or band_chart in plot's
 // package namespace when it imports plot/band_chart.
 BandChartHostModule :: (module: string) -> bool {
-    return ModuleName(module, "band_chart") || module == "plot_band_chart"
+    return ModuleName(module, "band_chart") || module == "plot__band_chart" ||
+    module == "plot_band_chart"
 }
 
 // The calls BandChartHostCall answers, for checking a bundle's capabilities

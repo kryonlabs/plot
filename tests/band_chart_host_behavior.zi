@@ -38,8 +38,9 @@ Call :: (session: Session, module: string, function: string, arguments: []HostVa
 
 #program_export
 main :: () -> s32 {
-    // A bundle names plot's modules p<package hash>_band_chart.
-    if !BandChartHostSupports("plot_band_chart", "BandChartHostedHost") ||
+    // Current imports use the package alias; published bundles retain their identity.
+    if !BandChartHostSupports("plot__band_chart", "BandChartHostedHost") ||
+    !BandChartHostSupports("plot_band_chart", "BandChartHostedHost") ||
     !BandChartHostSupports("pcb5258445244d90c_band_chart", "BandChartHostedHost") ||
     BandChartHostSupports("pcb5258445244d90c_other_band_chart", "BandChartHostedHost") ||
     BandChartHostSupports("band_chart", "BandChartNearest") {
