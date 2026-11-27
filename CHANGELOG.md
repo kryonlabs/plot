@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Pin Ziran e265c54e and Kryon f4bda473 so chart hosts keep one Kryon in the graph with typed TSX composition.
+
 - Use published Ziran dc3ecf0a and Kryon e2b0fbd8 for typed TSX composition over the native chart implementations.
 
 - Add TSX bindings for Plot and the chart widgets, and author the dashboard cookbook in TSX.
