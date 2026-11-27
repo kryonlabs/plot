@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Share published Ziran edd7f35a and Kryon 7fc37d68 with native app hosts.
+
 - Share the Kryon revision that fixes GPU seams in rounded fills.
 
 - Recognize chart capabilities imported through the current `plot` package alias so bundled Habits opens offline.
