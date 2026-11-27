@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-- Share published Ziran edd7f35a and Kryon 7fc37d68 with native app hosts.
+- Use published Ziran dc3ecf0a and Kryon e2b0fbd8 for typed TSX composition over the native chart implementations.
+
+- Add TSX bindings for Plot and the chart widgets, and author the dashboard cookbook in TSX.
 
 - Share the Kryon revision that fixes GPU seams in rounded fills.
 

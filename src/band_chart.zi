@@ -22,6 +22,7 @@
     #import "kryon/font_metrics"
     #import "kryon/tree_input"
     PressWidget :: #import "kryon/press";
+    PressView :: #import "kryon/tsx/press";
 
     #import "band_chart_props"
 
@@ -163,7 +164,7 @@
         area.key = props.key
         area.bounds = props.bounds
         area.label = props.semantic_label
-        pressed: PressWidget.PressResult = PressWidget.Draw(session, area)
+        pressed: PressWidget.PressResult = PressView.Press(.{session = session, props = area})
         BandChartBands(session, props, plot, bands)
         PaintLine(session, -1, Rectangle.{plot.x, plot.y + plot.height,
             plot.width, 0.0}, props.grid_color)

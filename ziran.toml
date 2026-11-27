@@ -1,16 +1,16 @@
 [package]
 name = "plot"
-entry = "src/app.zi"
-module_roots = ["src", "examples", "tests"]
+entry = "src/app.tsx"
+module_roots = ["src", "src/tsx", "examples", "tests"]
 bridge_modules = ["app"]
 
 [toolchain]
 git = "https://git.waozi.xyz/ziranlang/ziran.git"
-ref = "edd7f35a93d2d7e9824c27c8bab34fb0a0302fc3"
+ref = "dc3ecf0aabd1630881c13783a660ca8b298eff88"
 
 [dependencies.kryon]
 git = "https://git.waozi.xyz/kryonlabs/kryon.git"
-ref = "7fc37d6861e42ffb2d075c460fd31080b9c3234a"
+ref = "e2b0fbd89167f9bf599efed1865f198ba715786e"
 
 [exports]
 # Public module is Plot; the lowercase export is retained for older imports.
@@ -18,10 +18,19 @@ plot = "src/Plot/module.zi"
 Plot = "src/Plot/module.zi"
 # The chart surface alone, for apps that draw their own series.
 PlotWidget = "src/PlotWidget/module.zi"
+"tsx/plot" = "src/tsx/plot_view.tsx"
+"tsx/charts" = "src/tsx/chart_views.tsx"
+"tsx/dashboard" = "src/tsx/dashboard_chart_views.tsx"
 
 band_chart = "src/band_chart.zi"
 band_chart_props = "src/band_chart_props.zi"
 band_chart_host = "src/band_chart_host.zi"
+"examples/bandchart" = "examples/bandchart_scene.tsx"
+"examples/candlechart" = "examples/candlechart_scene.tsx"
+"examples/linechart" = "examples/linechart_scene.tsx"
+"examples/linechartcompare" = "examples/linechartcompare_scene.tsx"
+"examples/plotbars" = "examples/plotbars_scene.tsx"
+"examples/plotlines" = "examples/plotlines_scene.tsx"
 
 [tool.kryon]
 default_profile = "cairo"

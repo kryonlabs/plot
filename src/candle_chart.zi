@@ -1,4 +1,5 @@
 ButtonWidget :: #import "kryon/button";
+ButtonView :: #import "kryon/tsx/button";
 #import "kryon/drawing_props"
 #import "kryon/geometry"
 #import "kryon/paint_queue"
@@ -511,7 +512,7 @@ CandlePriceLevels :: (session: Session, props: CandleChartProps,
             level.bounds = Rectangle.{price.x + price.width - 116.0,
                 y - 10.0, 112.0, 20.0}
             level.label = levels[index].label
-            if ButtonWidget.Draw(session, level) != 0 { selected = index }
+            if ButtonView.Button(.{session = session, props = level}) { selected = index }
         }
         index += 1
     }
@@ -537,7 +538,7 @@ CandleMarkers :: (session: Session, props: CandleChartProps,
             marker.key = props.key + cast(u64)1000 + cast(u64)index
             marker.bounds = Rectangle.{x - 11.0, price.y + 2.0, 22.0, 20.0}
             marker.label = markers[index].label
-            if ButtonWidget.Draw(session, marker) != 0 { selected = index }
+            if ButtonView.Button(.{session = session, props = marker}) { selected = index }
         }
         index += 1
     }

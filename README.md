@@ -21,9 +21,8 @@ the native Cairo backend. `make check` checks the source and runs the chart and 
 The checked-in `ziran.lock` pins both Ziran and Kryon to exact commits. Plot
 exports `src/Plot/module.zi` for other packages, so `plot/Plot` resolves by
 its file both in projects and in builds that name `--module-path plot=DIR`.
-That module re-exports Plot's
-charts and Kryon's public UI surface; app code can use
-`using Charts :: #import "Plot";`.
+That module exports native chart data and algorithms; application screens use
+the typed TSX components below.
 
 To add Plot to another Ziran project, run:
 
@@ -52,6 +51,33 @@ Public module names use `UpperCamelCase` (`Kryon`, `PlotWidget`, `Plot`).
 Lowercase names such as `plot_widget` are implementation modules; the
 lowercase `plot` export remains available for existing consumers.
 
+## TSX authoring
+
+Import `Plot` from `plot/tsx/plot`, line, candle and band charts from
+`plot/tsx/charts`, and `XYChart`, grouped bars, heatmaps, waterfalls and
+linked time candles from `plot/tsx/dashboard`. Each component takes the draw
+session and its native checked props. Numeric algorithms, data declarations
+and ranges stay available from `plot/Plot` and `plot/PlotWidget`.
+Use `nativeSlice(values)` to pass a fixed array as chart data.
+
+```tsx
+import { Session } from "kryon/session";
+import { ChartRangeFor } from "plot/Plot";
+import { LineChart } from "plot/tsx/charts";
+
+export function DrawTrend(session: Session, values: float32[]): void {
+    <LineChart session={session} values={values} range={ChartRangeFor(values)}
+        props={{key: u64(42), bounds: {width: 320, height: 160}, semantic_label: "Trend",
+            line_color: {r: u8(23), g: u8(107), b: u8(131), a: u8(255)}, grid_color: {r: u8(180), g: u8(200), b: u8(210), a: u8(150)}}}/>;
+}
+```
+
+`BandChart` returns `BandChartResult`, and the dashboard components return
+`ChartHit`. Keep application selection or crosshair state in your frame code.
+`AnimatedLineChart` borrows animation state through `state={nativeRef(chart)}`
+and returns whether another frame is needed. Supply monotonic seconds, the duration,
+reduced-motion preference and easing as component attributes.
+
 ## Animated line charts
 
 `AnimatedLineChart` uses the same props and drawing as `LineChart` and takes
@@ -76,43 +102,42 @@ motion preference, or a nonpositive duration settles immediately. The widget
 requires a Kryon revision that exports `kryon/motion`. `make check-animated-line`
 runs its native regression test without opening a window.
 
-```zi
-App :: #import "kryon/app";
-Button :: #import "kryon/button";
-Desktop :: #import "kryon/desktop_runtime";
-Charts :: #import "plot/Plot";
-#import "kryon/drawing_props"
-#import "kryon/frame_snapshot"
-#import "kryon/geometry"
-#import "kryon/session"
+Keep the native chart state and its workspace alive between frames. Pass the
+current monotonic time and retain the returned selection for the next draw:
 
-previous: [3]float32 = .{2.0, 4.0, 3.0};
-current: [3]float32 = .{4.0, 3.0, 7.0};
-workspace: [9]float32;
-chart: Charts.AnimatedLineChartState;
-show_current: bool;
+```tsx
+import * as Charts from "plot/Plot";
+import { AnimatedLineChart } from "plot/tsx/charts";
+import { Button } from "kryon/tsx/button";
+import { ColorFromPacked } from "kryon/drawing_props";
+import { DesktopRequestFrame } from "kryon/desktop_runtime";
+import { Easing } from "kryon/motion";
+import { Session } from "kryon/session";
 
-Draw :: (frame: App.Frame) {
-    session := Session.{.slot = frame.slot, .epoch = frame.epoch}
-    if Button.Draw(session, Button.Props.{.key = 1, .label = "Switch week",
-        .bounds = Rectangle.{24.0, 20.0, 120.0, 36.0}}) != 0 {
-        show_current = !show_current
-    }
-    values := ifx show_current then current[:] else previous[:]
-    scale := Charts.ChartRangeForBoth(current[:], previous[:])
-    props := Charts.LineChartProps.{.key = 2,
-        .bounds = Rectangle.{24.0, 80.0, 352.0, 144.0},
-        .semantic_label = "Weekly visits", .line_color = ColorFromPacked(0x168265ff),
-        .grid_color = ColorFromPacked(0xb4bdc9ff)}
-    now := cast(float64)CaptureFrameInput(session).elapsed_ms / 1000.0
-    if Charts.AnimatedLineChart(session, props, values, scale, *chart, now) {
-        Desktop.DesktopRequestFrame()
-    }
+export interface WeeklyVisitsProps {
+    session: Session;
+    chart: NativeRef<Charts.AnimatedLineChartState>;
+    previous: float32[];
+    current: float32[];
+    showCurrent: boolean;
+    now: float64;
 }
 
-main :: () -> s32 {
-    chart.workspace = workspace[:]
-    return App.Run(App.Window.{.title = "Weekly visits", .width = 400, .height = 248}, Draw)
+export function WeeklyVisits(widget: WeeklyVisitsProps): boolean {
+    const switched = <Button session={widget.session} props={{key: u64(1), label: "Switch week",
+        bounds: {x: 24, y: 20, width: 120, height: 36}}}/>;
+    const showCurrent = switched ? !widget.showCurrent : widget.showCurrent;
+    const values = showCurrent ? widget.current : widget.previous;
+    const active = <AnimatedLineChart session={widget.session} state={widget.chart}
+        values={values} range={Charts.ChartRangeForBoth(widget.current, widget.previous)}
+        now={widget.now} duration={0.25} reduced_motion={false} easing={Easing.EaseOut}
+        props={{key: u64(2), bounds: {x: 24, y: 80, width: 352, height: 144},
+            semantic_label: "Weekly visits", line_color: ColorFromPacked(u32(0x168265ff)),
+            grid_color: ColorFromPacked(u32(0xb4bdc9ff))}}/>;
+    if (active) {
+        DesktopRequestFrame();
+    }
+    return showCurrent;
 }
 ```
 
@@ -170,7 +195,7 @@ layout rectangle and a stable key. Chart data is borrowed for that call.
 supplies surface, text, grid and sign colors. A series can use a packed
 `0xRRGGBBAA` color or leave `color` at zero to use the chart palette.
 
-[The dashboard cookbook](examples/dashboard_charts.zi) implements these calls
+[The dashboard cookbook](examples/dashboard_charts.tsx) implements these calls
 with illustrative data in a runnable Kryon frame. `make run` runs it natively.
 `make dashboard-zx` compiles it to `build/plot-portable.zx`. `ziran tool kryon run --profile portable`
 opens the bundle in the native Kryon player.
@@ -212,7 +237,7 @@ marks fed by your dataset. Kryon style tokens and per-series colors cover
 native palette choices. Rebuild tooltip behavior from `ChartHit` where the
 default tooltip is insufficient. HTML, JavaScript chart options, SVG markup,
 and browser CSS layout are inputs to the porting process. The cookbook's
-`.zi` sources compile into a native host program or a `.zx` bundle.
+`.tsx` sources compile into a native host program or a `.zx` bundle.
 
 Run `make check-dashboard` for the native C and ZX data tests.
 `make check-dashboard-ui` runs the Cairo and ZX rendering and input fixture
